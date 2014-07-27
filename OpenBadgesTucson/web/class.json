@@ -1,0 +1,7 @@
+{
+  "name": "Code for Tucson 2014",
+  "description": "This badge is for participation in the 2014 Code for Tucson event.",
+  "image": "http://codefortucsonbadge.s3-website-us-east-1.amazonaws.com/CfTBadge.png",
+  "criteria": "http://codefortucsonbadge.s3-website-us-east-1.amazonaws.com/criteria.txt",
+  "issuer": "http://codefortucsonbadge.s3-website-us-east-1.amazonaws.com/issuer.json"
+}

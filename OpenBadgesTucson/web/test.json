@@ -1,0 +1,14 @@
+{
+  "uid": "test",
+  "recipient": {
+    "type": "email",
+    "hashed": false,
+    "identity": "daniel.stormont@gmail.com"
+  },
+  "issuedOn": "2014-07-26T22:11:34.386Z",
+  "badge": "http://codefortucsonbadge.s3-website-us-east-1.amazonaws.com/class.json",
+  "verify": {
+    "type": "hosted",
+    "url": "http://codefortucsonbadge.s3-website-us-east-1.amazonaws.com/test.json"
+  }
+}
