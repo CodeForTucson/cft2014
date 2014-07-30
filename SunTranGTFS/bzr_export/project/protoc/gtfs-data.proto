@@ -1,0 +1,195 @@
+// TODO: right now i'm just copying the definitions exactly but 
+// for some of these i have redunant information, like a Trip has a bunch of stop times
+// but there is no reason  for each StopTime message to have a 'trip_id' since 
+// those stop times are contained WITHIN the trip itself. etc etc
+
+// TODO: possible bug in the gtfs documentation, in stop_times.txt, stop_id: 
+// " If location_type is used in stops.txt, all stops referenced in stop_times.txt must have location_type of 
+// 0.", i think this means if its NOT used in stops.txt cause otherwise it does not make sense
+
+message GTFSData {
+
+
+    message TempListOfStops {
+
+
+        repeated Stop stops = 1;
+    }
+
+    enum Accessibility {
+
+
+        NO_INFO = 0;
+        ACCESSIBLE = 1;
+        NOT_ACCESSIBLE = 2;
+    }
+
+
+    message Route {
+        
+
+        enum RouteType {
+
+            TRAM_STREETCAR_OR_RAIL = 0;
+            SUBWAY_OR_METRO = 1;
+            RAIL = 2;
+            BUS = 3;
+            FERRY = 4;
+            CABLE_CAR = 5;
+            GONDOLA = 6;
+            FUNICULAR  = 7;
+
+        }
+
+        required string route_id = 1;
+
+        optional string agency_id = 2;
+
+        required string route_short_name = 3;
+
+        required string route_long_name = 4;
+
+        optional string route_desc = 5;
+
+        required RouteType route_type = 6;
+
+        optional string route_url = 7;
+
+        optional string route_color = 8;
+
+        optional string route_text_color = 9;
+
+        repeated Trip trips = 10;
+
+    }
+
+    message Trip {
+
+        enum Direction {
+
+            DIRECTION_ZERO = 0;
+            DIRECTION_ONE = 1;
+
+        }
+
+
+
+        required string route_id = 1;
+
+        required string service_id = 2;
+
+        required string trip_id = 3;
+
+        optional string trip_short_name = 4;
+
+        optional Direction direction_id = 5;
+
+        optional string block_id = 6;
+
+        // rather then shape_id just use our Shape message
+        optional Shape tripShape = 7;
+
+        optional Accessibility wheelchair_accessible = 8;
+
+        optional Accessibility bikes_allowed = 9;
+
+        repeated StopTime stopTimes = 10;
+
+
+    }
+
+
+    message StopTime {
+
+        enum PickupDropoffType {
+
+            REGULARLY_SCHEDULED = 0;
+            NO_PICKUP_AVAILABLE = 1;
+            MUST_PHONE_AGENCY = 2;
+            COORDINATE_WITH_DRIVER = 3;
+
+        }
+
+        required string trip_id = 1;
+
+        required string arrival_time = 2;
+
+        required string departure_time = 3;
+
+        required string stop_id = 4;
+
+        required uint32 stop_sequence = 5;
+
+        optional string stop_headsign = 6;
+
+        optional PickupDropoffType pickup_type = 7;
+
+        optional PickupDropoffType drop_off_type = 8;
+
+        optional float shape_dist_traveled = 9;
+
+    }
+
+
+    message Stop {
+
+
+        enum LocationType {
+
+            STOP = 0;
+            STATION = 1;
+        }
+
+        required string stop_id = 1;
+
+        optional string stop_code = 2;
+
+        required string stop_name = 3;
+
+        optional string stop_desc = 4;
+
+        required string stop_lat = 6;
+
+        required string stop_lon = 7;
+
+        optional string zone_id = 8;
+
+        optional string stop_url = 9;
+
+        optional LocationType location_type = 10;
+
+        optional string parent_station = 11;
+
+        optional string stop_timezone = 12;
+
+        optional Accessibility wheelchair_boarding = 13;
+
+    }
+
+
+    message ShapeSegment {
+
+        required string shape_pt_lat = 1;
+
+        required string shape_pt_lon = 2;
+
+        optional string shape_dist_traveled = 3;
+
+    }
+
+
+    message Shape {
+
+
+        required string shape_id = 1;
+
+        repeated ShapeSegment shapes = 2;
+
+
+
+    }
+
+
+
+}
+

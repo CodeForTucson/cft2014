@@ -1,0 +1,26 @@
+gtfs notes:
+
+
+
+routes contain 1 or more routes
+
+    trips contain 1 or more stops
+
+
+        has a shape
+
+        has the concept of a "trip pattern" where a group of trips that visit the same stops in the same order)
+            this is basically like the 9 bus route East versus the 9 bus route West
+
+            there are 67 trips for West and 68 trips for East, but all of those follow the same pattern
+            so there are really just 2 Trip patterns
+
+
+        stops are where you get on / off
+
+
+            has a stop time
+
+
+
+

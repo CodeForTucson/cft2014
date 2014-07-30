@@ -1,0 +1,11 @@
+Corvidae:trunk markgrandi$ curl -I http://suntran.com/gtfs/SuntranGTFS.zip
+HTTP/1.1 200 OK
+Date: Fri, 25 Jul 2014 02:23:15 GMT
+Server: Apache
+Last-Modified: Wed, 26 Feb 2014 17:16:25 GMT
+ETag: "10d98cec-1c3ba5-4f3525d4c6c40"
+Accept-Ranges: bytes
+Content-Length: 1850277
+Content-Type: application/zip
+
+Corvidae:trunk markgrandi$

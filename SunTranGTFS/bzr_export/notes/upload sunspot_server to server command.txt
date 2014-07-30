@@ -1,0 +1,3 @@
+upload sunspot_server.py to my server using pscp:
+
+"C:\Users\mark>"C:\Program Files (x86)\PuTTY\pscp.exe" -P 23 C:\Users\mark\Code\winphone_tucson_suntran_app_repo\trunk\project\sunspot_server\sunspot_server.py mark@mgrandi.no-ip.org:/var/www/sunspot

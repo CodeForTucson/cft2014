@@ -1,0 +1,22 @@
+http://maps.tucsonaz.gov/realestate/
+
+http://suntran.com/tmwebwatch/LiveArrivalTimes
+
+http://suntran.com/developers_registration.php
+
+
+http://www.sunlinkstreetcar.com
+
+http://infoweb.suntran.com/hiwire?.a=iRealTimeDisplay -> REAL TIME DATA EXAMPLE
+
+###############
+dev stuff
+##############
+
+protocol buffers:
+
+https://github.com/openx/python3-protobuf
+    where i'm getting protoc from,
+
+https://pypi.python.org/pypi/python3-protobuf
+    the runtime library, not sure if protoc comes with this.... not sure if its the best version at the moment as apparently there are multiple forks at the moment, see http://stackoverflow.com/questions/8663468/is-there-any-way-to-access-protocol-buffers-with-python-3-x

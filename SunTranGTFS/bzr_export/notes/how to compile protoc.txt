@@ -1,0 +1,19 @@
+how to compile protoc on my linux server
+
+
+git clone https://github.com/openx/python3-protobuf.git
+./autogen.sh
+./configure --prefix=$HOME
+# wait....
+make
+make check
+make install
+# done
+
+
+TO ACTUALLY USE IT IN THE PYTHON APP:
+
+you need the pypi package "python3-protobuf"
+
+however you need to install it in the system level, aka not though --user or else it won't find it
+cause its running python as a different user then you are!!!
