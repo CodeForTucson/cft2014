@@ -1,0 +1,4 @@
+WSGIScriptAlias /sunspot /var/www/sunspot/sunspot_server.py
+<Directory /var/www/sunspot>
+    WSGIApplicationGroup %{GLOBAL}
+</Directory>

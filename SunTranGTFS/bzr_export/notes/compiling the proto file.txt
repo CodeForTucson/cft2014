@@ -1,0 +1,6 @@
+compile the proto  file
+
+
+cd /var/www/sunspot
+
+protoc -I=./ gtfs-data.proto --python_out=./
