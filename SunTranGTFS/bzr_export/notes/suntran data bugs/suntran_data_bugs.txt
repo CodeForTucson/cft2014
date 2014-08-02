@@ -1,0 +1,14 @@
+Suntran Data Bugs:
+
+
+1:
+    So it seems for some routes, there are sometimes random 'trips' that don't make sense, like they are just 
+    only half way of the normal route.
+
+    for example, see screenshot_01.png, for Route 1, there are the two normal 'trip patterns' (the blue boxes in the top left)
+    with like 58 stops each. But then there are two that have 1 stop each, and if you click on them, they go like halfway and then just stop
+    I tried looking for this wierd trip on the suntran pdf of this route but i couldn't find it. Maybe its like, the very "first" trip and the very "last" trip it makes? It doesn't look like there is a bus depo on the google map...
+
+    but anyway these are going to be kinda annoying once i start writing code to find the trip patterns.
+
+    

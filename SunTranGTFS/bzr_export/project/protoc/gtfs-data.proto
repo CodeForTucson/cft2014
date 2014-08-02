@@ -16,6 +16,16 @@ message GTFSData {
         repeated Stop stops = 1;
     }
 
+    message FinalGtfsData {
+
+        // all of the stops are 'independent' of routes/trips
+        repeated Stop stops = 1;
+
+        // all of the Routes, which contain trips, stop_times, etc
+        repeated Route routes = 2; 
+
+    }
+
     enum Accessibility {
 
 
@@ -148,32 +158,35 @@ message GTFSData {
 
         optional string stop_desc = 4;
 
-        required string stop_lat = 6;
+        required GeoCoordinate stop_coord = 5;
 
-        required string stop_lon = 7;
+        optional string zone_id = 6;
 
-        optional string zone_id = 8;
+        optional string stop_url = 7;
 
-        optional string stop_url = 9;
+        optional LocationType location_type = 8;
 
-        optional LocationType location_type = 10;
+        optional string parent_station = 9;
 
-        optional string parent_station = 11;
+        optional string stop_timezone = 10;
 
-        optional string stop_timezone = 12;
+        optional Accessibility wheelchair_boarding = 11;
 
-        optional Accessibility wheelchair_boarding = 13;
+    }
 
+    message GeoCoordinate {
+
+
+        required double lat = 1;
+        required double lon = 2;
     }
 
 
     message ShapeSegment {
 
-        required string shape_pt_lat = 1;
+        required GeoCoordinate shape_coord = 1;
 
-        required string shape_pt_lon = 2;
-
-        optional string shape_dist_traveled = 3;
+        optional string shape_dist_traveled = 2;
 
     }
 

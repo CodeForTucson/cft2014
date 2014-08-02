@@ -1,8 +1,14 @@
 gtfs notes:
 
 
+    when using the google schedule viewer, when you click on a route, the 'yellow markers' are stops on that trip
 
-routes contain 1 or more routes
+    but the yellow markers are also stops, so if you view the exact same area with a different route selected
+    there will be a blue stop marker instead of a yellow marker (aka the yellow marker is overlapping the blue marker)
+
+
+
+routes contain 1 or more trips
 
     trips contain 1 or more stops
 
@@ -16,10 +22,10 @@ routes contain 1 or more routes
             so there are really just 2 Trip patterns
 
 
-        stops are where you get on / off
+        uses stop_times.txt , via the 'trip_id' field to list the stops in order (stop_sequence)
 
 
-            has a stop time
+stops are just their own thing, multiple routes/trips can hit the same stop.
 
 
 
