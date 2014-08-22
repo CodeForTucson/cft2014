@@ -31,14 +31,21 @@ class ServerDatabase:
 
 
     def __getitem__(self, key):
-        '''implementation of obj[item]'''
+        '''implementation of obj[item]
+
+        @param key - a string
+        @return A STRING'''
 
         
 
         return self.db.Get(key.encode("utf-8")).decode("utf-8")
 
     def __setitem__(self, key, value):
-        '''implementation of obj[item] = something'''
+        '''implementation of obj[item] = something
+
+        @param key - a string
+        @param value - a string
+        '''
 
         self.lg.debug("Setting key: {} , value: {}".format(key, value))
 
@@ -47,7 +54,10 @@ class ServerDatabase:
 
 
     def __delitem__(self, key):
-        '''implementation of del obj["item"]'''
+        '''implementation of del obj["item"]
+
+        @param key - a string
+        '''
 
         self.lg.debug("Deleting key: {}".format(key))
         self.db.Delete(key.encode("utf-8"))
@@ -61,7 +71,7 @@ class ServerDatabase:
 
         del self.db
 
-        self.lg.debug("ServerDatabase.__del__() called, closing database at {}".format(self.dbFile ))
+        self.lg.debug("ServerDatabase.__del__() called, closing database at {}".format(self.dbFilePath))
 
 
     def setWithPrefix(self, key, formatEntries, value):
@@ -81,7 +91,7 @@ class ServerDatabase:
 
         @param key - the key to use to retrieve a value from the leveldb database, that has some format markers ({})
         @param formatEntries - an iterable to use when we call .format() on @key
-        @return a tuple of bytearrays
+        @return a STRING
         '''
 
         # don't do any encoding or decoding, the __getitem__ method does that
@@ -99,6 +109,7 @@ class ServerDatabase:
             will also be used to see if the keys the database returns start with this string (after format is called),
             if they don't startwith(@key), then we stop the iteration
         @param formatEntries - an iterable we use when we call .format() on @key
+        @return a GENERATOR that returns a two-tuple of bytearrays that you NEED TO CALL DECODE() ON
         '''
         #self.lg.debug("key: {}, formatEntries: {}".format(key, formatEntries))
 
@@ -117,7 +128,7 @@ class ServerDatabase:
 
         rangeStr will be formatted with @formatEntries (should be something from ServerDatabaseEnums)
 
-        @param rangeStr - the key to use to start the leveldb search from (to delete), that has some format markers ({})
+        @param rangeStr - the string key to use to start the leveldb search from (to delete), that has some format markers ({})
             will also be used to see if the keys the database returns start with this string (after format is called),
             if they don't startwith(@rangeStr), then we stop the iteration
         @param formatEntries - an iterable we use when we call .format() on @rangeStr
