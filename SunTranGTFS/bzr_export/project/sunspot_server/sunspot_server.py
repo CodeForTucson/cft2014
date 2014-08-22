@@ -27,7 +27,7 @@ import lzma
 import pathlib
 
 from constants import Constants
-from server_config import ServerConfig
+from server_database import ServerDatabase
 
 from cherrypy.lib.static import serve_file
 
@@ -166,7 +166,7 @@ class Root:
     @cherrypy.tools.accept(media='application/octet-stream')
     def POST(self):
 
-        configObj = ServerConfig(self.constants.CONFIG_FILE_PATH)
+        configObj = ServerDatabase(self.constants.CONFIG_FILE_PATH)
 
         self.logger.error("Current dir: {}".format(os.getcwd()))
         self.logger.error("application config: {}".format(application.config))

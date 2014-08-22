@@ -6,7 +6,7 @@
 # database to the current version of the database
 #
 from constants import Constants
-from server_config import ServerConfig, ConfigEnums
+from server_database import ServerDatabase, ServerDatabaseEnums
 
 import logging
 import collections
@@ -46,7 +46,7 @@ class GTFSDataParser:
         logger = logger.getChild("parser")
         self.constants = Constants(args.constantsYamlPath)
         
-        configObj = ServerConfig(self.constants.CONFIG_DB_PATH, logger)
+        sbObj = ServerDatabase(self.constants.CONFIG_DB_PATH, logger)
 
 
         if args.verbose:
@@ -60,13 +60,13 @@ class GTFSDataParser:
             
         # used to see if we got a new database or not
         try:
-            oldDownloadTime = configObj[ConfigEnums.KEY_LAST_DOWNLOAD_TIME]
+            oldDownloadTime = sbObj[ServerDatabaseEnums.KEY_LAST_DOWNLOAD_TIME]
         except KeyError:
             # don't have a oldDownloadTime set, so therefore its a brand new database
             oldDownloadTime = "0"
 
         # figure out what GTFS data we are using, and if it needs to be downloaded
-        downloadResult = self.downloadGtfsDataIfNeeded(configObj, logger, args)
+        downloadResult = self.downloadGtfsDataIfNeeded(sbObj, logger, args)
 
 
 
@@ -211,12 +211,12 @@ class GTFSDataParser:
             logger.info("Inserting database path into config database")
 
             # insert the database's location into our config database
-            configObj.setWithPrefix(ConfigEnums.PREFIX_DATABASE_TIME_TO_LOCATION, [databaseTime], sqliteResult.sqlitePath)
+            sbObj.setWithPrefix(ServerDatabaseEnums.PREFIX_DATABASE_TIME_TO_LOCATION, [databaseTime], sqliteResult.sqlitePath)
 
             # then , create patches for every database version up to this one
 
         if shouldGeneratePatches:
-            self.createDbPatches(databaseTime, sqliteResult, configObj, logger)
+            self.createDbPatches(databaseTime, sqliteResult, sbObj, logger)
         else:
             logger.info("skipping patch generation")
 
@@ -224,19 +224,19 @@ class GTFSDataParser:
         
 
 
-    def createDbPatches(self, generatedDbTime, sqliteResultObj, serverConfig, logger):
-        ''' this creates a patch file from every sqlite database we have generated (according to our ServerConfig database),
+    def createDbPatches(self, generatedDbTime, sqliteResultObj, serverDbObj, logger):
+        ''' this creates a patch file from every sqlite database we have generated (according to our ServerDatabase database),
         to the current one we just generated in this script (identified by generatedDbTime)
 
         @param generatedDbTime - the time / version of the database we just generated
         @param sqliteResultObj - the SqliteResult object , we need the path for the database
-        @param serverConfig - the ServerConfig object
+        @param serverDbObj - the ServerDatabase object
         @param logger - the logger'''
 
 
         lg = logger.getChild("patching")
 
-        # we start out by deleting everything in the db patches folder, and clearing any ServerConfig keys
+        # we start out by deleting everything in the db patches folder, and clearing any ServerDatabase keys
         # that link to other patches. We do this because when this method is called, we are getting a new database
         # and therefore we need to generate new patches anyway
         for iterPatchFile in pathlib.Path(self.constants.DB_PATCHES_FOLDER).glob("*.bsdiff4"):
@@ -244,11 +244,11 @@ class GTFSDataParser:
             iterPatchFile.unlink()
 
         lg.debug("Deleting old patch entries in server config db")
-        serverConfig.deleteAllInRange(ConfigEnums.KEY_DB_PATCH_LETTER, [])
+        serverDbObj.deleteAllInRange(ServerDatabaseEnums.KEY_DB_PATCH_LETTER, [])
 
 
         lg.info("Starting database patch creation, current database time is {}".format(generatedDbTime))
-        for iterKey, iterValue in serverConfig.getGeneratorWithPrefix(ConfigEnums.PREFIX_DATABASE_TIME_TO_LOCATION, [""]):
+        for iterKey, iterValue in serverDbObj.getGeneratorWithPrefix(ServerDatabaseEnums.PREFIX_DATABASE_TIME_TO_LOCATION, [""]):
 
             tmpKeyStr = iterKey.decode("utf-8")
             prevDbVersion = tmpKeyStr[tmpKeyStr.find(":") + 1:]
@@ -267,7 +267,7 @@ class GTFSDataParser:
             existingEntry = None
             keepGoing = False
             try:
-                existingEntry = serverConfig.getWithPrefix(ConfigEnums.PREFIX_DB_PATCH, [prevDbVersion, generatedDbTime])
+                existingEntry = serverDbObj.getWithPrefix(ServerDatabaseEnums.PREFIX_DB_PATCH, [prevDbVersion, generatedDbTime])
             except KeyError:
                 # doesn't exist, keep going
                 keepGoing = True
@@ -288,7 +288,7 @@ class GTFSDataParser:
             lg.debug("  creating patch from database version {} to current version {}".format(prevDbVersion, generatedDbTime))
 
             # get the path to the current database
-            curDbPath = serverConfig.getWithPrefix(ConfigEnums.PREFIX_DATABASE_TIME_TO_LOCATION, [generatedDbTime])
+            curDbPath = serverDbObj.getWithPrefix(ServerDatabaseEnums.PREFIX_DATABASE_TIME_TO_LOCATION, [generatedDbTime])
 
             # where are we storing the patch?
             patchDir = pathlib.Path(self.constants.DB_PATCHES_FOLDER)
@@ -304,7 +304,7 @@ class GTFSDataParser:
             bsdiff4.file_diff(prevDbPath, curDbPath, str(patchPath))
 
             # then save the fact that we have a patch into our config database
-            serverConfig.setWithPrefix(ConfigEnums.PREFIX_DB_PATCH, [prevDbVersion, generatedDbTime], str(patchPath))
+            serverDbObj.setWithPrefix(ServerDatabaseEnums.PREFIX_DB_PATCH, [prevDbVersion, generatedDbTime], str(patchPath))
 
             
 
@@ -312,11 +312,12 @@ class GTFSDataParser:
 
 
 
-    def downloadGtfsDataIfNeeded(self, configObj, loggerObj, namespaceObj):
+    def downloadGtfsDataIfNeeded(self, sbObj, loggerObj, namespaceObj):
         ''' the logic to see if we need to download the gtfs zip data, 
         and returns a DownloadResult object with the path of the zip file and the 
         time of the database we are considering
 
+        @param sbObj - the ServerDatabase object 
         @param logger - a logger object
         @param namespaceObj - the argparse namespace object
         @return a DownloadResult object'''
@@ -345,7 +346,7 @@ class GTFSDataParser:
                 # in case we don't have a config date set
                 configDate = None
                 try:
-                    configDate = arrow.get(configObj[ConfigEnums.KEY_LAST_DOWNLOAD_TIME])
+                    configDate = arrow.get(sbObj[ServerDatabaseEnums.KEY_LAST_DOWNLOAD_TIME])
                 except KeyError:
                     logger.debug("KeyError, setting configDate to be epoch")
                     configDate = arrow.get("1970-01-01T00:00:00+00:00")
@@ -369,7 +370,7 @@ class GTFSDataParser:
                         logger.debug("\tFile written successfully")
 
                     # set new modified date after we finished downloading
-                    configObj[ConfigEnums.KEY_LAST_DOWNLOAD_TIME] = str(remoteDate.timestamp)
+                    sbObj[ServerDatabaseEnums.KEY_LAST_DOWNLOAD_TIME] = str(remoteDate.timestamp)
                     databaseTime = remoteDate.timestamp
 
                     return DownloadResult(self.constants.GTFS_ZIP_FILE_STRING, databaseTime)
@@ -382,7 +383,7 @@ class GTFSDataParser:
 
                     # see if the database exists for this time, aka if we need to recreate the database using the existing gtfs data
                     try:
-                        tmppath = configObj.getWithPrefix(ConfigEnums.PREFIX_DATABASE_TIME_TO_LOCATION, [configDate.timestamp])
+                        tmppath = sbObj.getWithPrefix(ServerDatabaseEnums.PREFIX_DATABASE_TIME_TO_LOCATION, [configDate.timestamp])
                         if pathlib.Path(tmppath).exists():
 
                             # database already exists so we can skip generation, by passing None in for DownloadResult.zipFilePath
