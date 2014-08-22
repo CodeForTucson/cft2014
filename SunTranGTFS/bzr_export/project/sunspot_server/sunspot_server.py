@@ -1,4 +1,15 @@
+#!/usr/bin/env python3
+#
+# sunspot_server.py
+#
+# main server file for the sunspot app / server backend
+#
+# Mark Grandi - Aug 22, 2014
+#
 
+###################
+# cherrypy stuff
+###################
 # TODO: why do i need these imports? find out later!
 import sys
 sys.stdout = sys.stderr
@@ -7,12 +18,13 @@ import hashlib
 import atexit
 import threading
 import cherrypy
+from cherrypy.lib.static import serve_file
 
-#####################################################
 
-# TODO: HACK or else it won't import the pb2 class
-if "/var/www/sunspot" not in sys.path:
-    sys.path.append("/var/www/sunspot")
+###################
+# library imports
+###################
+
 import os.path
 import os
 import zlib
@@ -26,38 +38,47 @@ import yaml
 import lzma
 import pathlib
 
+###################
+# project imports 
+###################
+
+# TODO: HACK or else it won't import our classes!
+if "/var/www/sunspot" not in sys.path:
+    sys.path.append("/var/www/sunspot")
 from constants import Constants
 from server_database import ServerDatabase
 
-from cherrypy.lib.static import serve_file
 
-
-
-cherrypy.log(str(sys.path))
+###################
+# protocol buffer imports
+###################
 
 from sunspot_messages_pb2 import SunspotMessages
 import google.protobuf.message # for DecodeError exception
 
 
 class Root:
+    ''' main class / cherrypy application '''
 
+    # let cherrypy know that we are exposing this class to the web to be called
     exposed = True
     
-    
-
     def __init__(self):
+        ''' constructor'''
 
         pass
 
     def _setApp(self, app):
+        ''' hackish method to make it so this object has a reference to the applications Logger object
+        and so we can access its config dictionary as well.'''
 
         # TODO HACK: maybe just save instance of the logger instead of the app, we probably have
         # a recursive dependency here
         self.app = app
         self.logger = self.app.log
 
-        self.logger.error(str(app.config))
-        self.logger.error(app.config["/"]["constants_yaml"])
+        # self.logger.error(str(app.config))
+        # self.logger.error(app.config["/"]["constants_yaml"])
 
         self.constants = Constants(app.config["/"]["constants_yaml"])
 
@@ -88,10 +109,11 @@ class Root:
 
 
     class CompressorNone:
-
+        '''compresion object that we return from _getCompressorObj, this is for COMPRESSION_NONE'''
 
         def __init__(self, logger):
-            '''compresion object that we return from _getCompressorObj, this is for COMPRESSION_NONE'''
+           ''' constructor 
+           @param logger - a logger object'''
 
             self.logger = logger
             self.compressionType = SunspotMessages.COMPRESSION_NONE
@@ -106,9 +128,11 @@ class Root:
 
 
     class CompressorLzmaXz:
+        '''compresion object that we return from _getCompressorObj, this is for COMPRESSION_LZMA_XZ'''
 
         def __init__(self, logger):
-            '''compresion object that we return from _getCompressorObj, this is for COMPRESSION_LZMA_XZ'''
+            ''' constructor
+            @param logger - a logger object'''
 
             self.logger = logger
             self.compressionType = SunspotMessages.COMPRESSION_LZMA_XZ
@@ -160,11 +184,14 @@ class Root:
 
 
     def GET(self):
+        ''' called when we recieve a GET request'''
         return "hello"
 
 
-    @cherrypy.tools.accept(media='application/octet-stream')
+    @cherrypy.tools.accept(media='application/octet-stream') # we only accept application/octet-stream content-types
     def POST(self):
+        ''' called when we recieve a POST request'''
+
 
         configObj = ServerDatabase(self.constants.CONFIG_FILE_PATH)
 
@@ -261,11 +288,15 @@ class Root:
 
 
 class TestZip():
+    ''' cherrypy application that just returns a zip file depending on the GET's num parameter
+     so we can pretend that we are downloading different versions of the GTFS data.'''
 
+    # let cherrypy know that we are exposing this class to the web to be called
     exposed = True
 
 
     def __init__(self):
+        ''' constructor'''
 
         self.logger = None
         self.zipFiles = [
@@ -284,6 +315,7 @@ class TestZip():
 
 
     def GET(self, num=None, length=None):
+        ''' called when we recieve a GET request'''
 
         if length:
             return str(len(self.zipFiles))
@@ -304,7 +336,7 @@ class TestZip():
         return serve_file(str(tmpZipFilePath), "application/zip", str(tmpZipFilePath))
         
 
-
+# config object we pass to cherrypy.Application()
 config = {
     '/':
     {
@@ -319,6 +351,8 @@ config = {
         "constants_yaml": "/var/www/sunspot/constants_config.yaml"
     }}
 
+
+# server setup
 root = Root()
 root.testzip = TestZip()
 application = cherrypy.Application(root, script_name="/sunspot", config=config)
