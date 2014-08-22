@@ -1,3 +1,3 @@
 bazaar-ng testament short form 1
-revision-id: markgrandi@gmail.com-20140822235023-2laalz4o4x23oqrt
-sha1: 5b744f73b83d6795e2e48aeaf54d8da7a7165657
+revision-id: markgrandi@gmail.com-20140822235210-pt6rguzvnc7p4lx9
+sha1: fee70c147dfc3bbe2a3606a37231b511d3722261
