@@ -1,2 +1,1 @@
-sunspot_server_config: 
-    gtfs_zip_last_modified: '1969-12-31T17:00:00-07:00'
+sunspot_server_config: {gtfs_zip_last_modified: '2014-02-26T17:16:25+00:00'}

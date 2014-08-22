@@ -1,0 +1,137 @@
+// Protobuf file that defines the stuff that the server sends to the phone
+// and what the phone sends to the server
+// this includes a full database, a patch from one version of the database to another,
+// version of the database when its downloaded, etc
+//
+// copyright Mark Grandi - Aug 7, 2014
+
+message SunspotMessages {
+    // just a top level namespace
+
+
+    enum CompressionType {
+
+
+        COMPRESSION_NONE = 0;
+        COMPRESSION_LZMA_XZ = 1;
+
+    }
+
+    message ServerError {
+        // information about an error
+
+        enum ServerErrorType {
+
+            // sent bad request, wanted a DB but didn't get any data with it, etc
+            // protobuf object is well formed but logically wrong
+            INVALID_REQUEST = 0;
+
+            // protobuf message couldn't be decoded
+            INVALID_PROTOBUF_MSG = 1;
+
+            // server doesn't recognize something (like an enum), its protobuf class is probably out of date
+            SERVER_DOESNT_RECOGNIZE = 2;
+        }
+
+        // error code
+        required ServerErrorType error_code = 1;
+
+        // human readable error message
+        required string error_message = 2;
+
+
+    }
+
+    message ServerQuery {
+        // message that the mobile client sends to the server when it wants
+        // something, like a full database or patch, etc
+
+        enum ServerQueryType {
+
+            NEED_FULL_DB = 0;
+            NEED_PATCH = 1;
+
+        }
+
+        // what is the mobile client asking the server for
+        required ServerQueryType asking_for = 1;
+
+        // if we want a patch, what version of the db
+        // does the user have so we can generate/send the correct patch
+        optional string version_of_existing_db = 2;
+
+        // valid compression types that this mobile client supports
+        repeated CompressionType requested_compression = 3;
+
+
+    }
+
+
+    message ServerResponse {
+        // message that the server sends back to the mobile client
+
+        enum ServerResponseType {
+
+            CONTAINS_FULL_DB = 0;
+            CONTAINS_PATCH = 1;
+
+            // I'm putting this in there cause i'm thinking about a situation where 
+            // somehow the user has a version of the database that is super old / missing on the server
+            // so we can't generate a patch from db version A to db version B, so this signifies
+            // that we are sending the full db and the mobile client must accept it
+            CONTAINS_FULL_DB_FORCED = 2;
+
+            CONTAINS_ERROR = 3;
+
+        }
+
+
+
+        required ServerResponseType data_we_contain = 1;
+
+        // will be the version of the database that the user should be 
+        // at once they apply the patch or if they get the full database
+        // if we got a DB (full db, patch, or full db forced)
+        optional string version_of_db = 2;
+
+        // the compressed data if we got a DB (full db, patch, full db forced)
+        optional bytes actual_data = 3;
+
+        // how actual_data is compressed, if we got a DB (full db, patch, or full db forced)
+        optional CompressionType compression_type = 4;
+
+        // if data_we_contain is CONTAINS_ERROR
+        optional ServerError error_data = 5;
+
+
+
+    }
+
+    message ActualSunspotMessage {
+        // the actual message that is getting sent or recieved by either the server / mobile client
+
+        enum SunspotMessageType {
+            SERVER_QUERY = 0;
+            SERVER_RESPONSE = 1;
+
+        }
+
+        // timestamp of when the server or client generated this message
+        required string timestamp = 1;
+
+        // here we have an enum that tells whoever gets the message
+        // what type of message it is, and then based on that,
+        // one of the optional messages below will have data in it.
+        // This is basically "our union type", described here:
+        // https://developers.google.com/protocol-buffers/docs/techniques#union
+        required SunspotMessageType message_type = 2;
+
+        optional ServerQuery server_query_message = 3;
+
+        optional ServerResponse server_response_message = 4;
+
+
+    }
+
+
+}

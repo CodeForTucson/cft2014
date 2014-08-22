@@ -1,0 +1,10 @@
+third party libraries:
+
+python:
+
+    leveldb
+    bsdiff4
+    arrow
+    requests
+    cherrypy
+    yaml

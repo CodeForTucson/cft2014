@@ -1,0 +1,114 @@
+#
+# YAML config for 'upload.py'
+# 
+# Mark Grandi - Aug 12, 2014
+#
+
+
+###################
+# GENERAL NOTES:
+# all paths should be relative to location of this file
+###################
+upload_config:
+
+    # where we connect to, used in the rsync commands
+    remote_url: "mark@mgrandi.no-ip.org"
+
+    # used for rsync to connect to a module
+    rsync_module_name: "sunspot"          # module name so we can connect to it
+    rsync_module_path: "/var/www/sunspot" # where the module actually takes us on the server in rsyncd.conf
+    rsync_passwd_file: "rsync_passwd.txt" # must be chmod'ed to 700
+
+    # what binaries to use for what operating systems
+    # NOTE: the keys in this dictionary need to match up to 
+    # strings returned by python's platform.system()
+    binaries:
+
+        # under each key, you should have these fields
+        # 
+        #   rsync_bin: the command to run rsync 
+        #   protoc_bin: the command to run protoc
+        #   ssh_cmd: the command to ssh into something, this is both used to 
+        #       chown files and to upload them (passing them to rsync via the 
+        #       --rsh) . This should be a list.
+        # 
+
+        Windows:
+            rsync_bin: "something"
+            protoc_bin: "something"
+            ssh_cmd: "something"
+
+        Darwin:
+            rsync_bin: "rsync3"
+            protoc_bin: "protoc-py3"
+            ssh_cmd: ["ssh", "-p", "23"]
+
+    # list stuff that needs to be compiled by protoc
+    # note: the final path of the pb2.py file will be deleted first
+    protoc_list:
+
+        # under each key, you should have these fields
+        # 
+        #   filepath: the filepath of the proto file
+        #   include_path: the include path for proto files
+        #   output_path: where to output the python generated class files
+        #
+        #   these basically equate to:
+        #       protoc -I=<include_path> <filepath> --python_out=<output_path>
+        #
+
+        sunspot_messages.proto:
+            filepath: "protoc/sunspot_messages.proto"
+            include_path: "protoc"
+            output_path: "sunspot_server/"
+
+
+    # the files we upload and where they get uploaded to
+    upload_list:
+
+        # under each key, you should have these fields
+        # 
+        #   filepath: the file to upload
+        #   upload_to: the place to put this file on the remote server: 
+        #       (see remote_url underneath the root key in  this yaml file)
+        #   chown_to: if not an empty string, then after uploading we ssh into 
+        #       the server and chown this file to whataver 'chown_to' is
+        #
+        #   these basically equate to:
+        #       rsync --rsh='ssh -p 22' <filepath> something.com:<upload_to>
+        #
+
+        sunspot_messages_pb2.py:
+
+            filepath: "sunspot_server/sunspot_messages_pb2.py"
+            upload_to: "/var/www/sunspot"
+            chown_to: ""
+
+        sunspot_server.py:
+
+            filepath: "sunspot_server/sunspot_server.py"
+            upload_to: "/var/www/sunspot"
+            chown_to: ""
+
+        constants.py:
+
+            filepath: "sunspot_server/constants.py"
+            upload_to: "/var/www/sunspot"
+            chown_to: ""
+
+        parse_gtfs_data.py:
+
+            filepath: "sunspot_server/parse_gtfs_data.py"
+            upload_to: "/var/www/sunspot"
+            chown_to: ""
+
+        server_config.py:
+
+            filepath: "sunspot_server/server_config.py"
+            upload_to: "/var/www/sunspot"
+            chown_to: ""
+
+        constants_config.yaml:
+            filepath: "sunspot_server/constants_config.yaml"
+            upload_to: "/var/www/sunspot"
+            chown_to: ""

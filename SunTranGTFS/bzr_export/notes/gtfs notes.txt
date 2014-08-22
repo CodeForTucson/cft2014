@@ -30,3 +30,16 @@ stops are just their own thing, multiple routes/trips can hit the same stop.
 
 
 
+
+
+pattern stuff:
+
+    pick a route, note its route_id
+
+        find all the trips with that route_id, then note all the 'trip ids' for each row that has the same route_id
+
+
+            then go into stop_times.txt and find all the stops for those trip ids
+
+            
+

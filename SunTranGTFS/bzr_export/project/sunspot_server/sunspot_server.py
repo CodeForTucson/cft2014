@@ -10,6 +10,9 @@ import cherrypy
 
 #####################################################
 
+# TODO: HACK or else it won't import the pb2 class
+if "/var/www/sunspot" not in sys.path:
+    sys.path.append("/var/www/sunspot")
 import os.path
 import os
 import zlib
@@ -20,281 +23,304 @@ import io
 import arrow
 from contextlib import closing
 import yaml
+import lzma
+import pathlib
 
-# TODO: HACK or else it won't import the pb2 class
-sys.path.append("/var/www/sunspot")
+from constants import Constants
+from server_config import ServerConfig
+
+from cherrypy.lib.static import serve_file
+
+
+
 cherrypy.log(str(sys.path))
 
-from gtfs_data_pb2 import GTFSData
-
+from sunspot_messages_pb2 import SunspotMessages
+import google.protobuf.message # for DecodeError exception
 
 
 class Root:
 
-    # TODO make this use pathlib?
-    SERVER_WORKING_DIR = "/var/www/sunspot"
-    GTFS_ZIP_FILE_STRING = os.path.join(SERVER_WORKING_DIR, "gtfs.zip")
-    GTFS_ZIP_FILE_URL = "http://suntran.com/gtfs/SuntranGTFS.zip"
-    HTTP_HEADER_LAST_MODIFIED_FORMAT = "ddd, D MMM YYYY HH:mm:ss"
-    CONFIG_FILE_PATH = "/var/www/sunspot/config.yaml"
+    exposed = True
+    
+    
 
     def __init__(self):
 
         pass
 
-    @cherrypy.expose
-    def index(self):
+    def _setApp(self, app):
+
+        # TODO HACK: maybe just save instance of the logger instead of the app, we probably have
+        # a recursive dependency here
+        self.app = app
+        self.logger = self.app.log
+
+        self.logger.error(str(app.config))
+        self.logger.error(app.config["/"]["constants_yaml"])
+
+        self.constants = Constants(app.config["/"]["constants_yaml"])
 
 
-        configObj = ServerConfig.load(Root.CONFIG_FILE_PATH)
+    def _handleError(self, errCode, logMsg, errMsg, httpErrCode=400):
+        ''' helper method to construct a error protobuf message, sets the http status code to 
+        be 400, and then we return the serialized protobuf object. So call 'return _handleError()'
 
-        # if not os.path.exists(Root.GTFS_ZIP_FILE_STRING):
+        @param errCode - one of the ServerErrorType enumerations
+        @param logMsg - the message we log to our own log
+        @param errMsg - the human readable message thats given with the error code 
+        @param httpErrCode - the http error code to set the request headers to
+        @return the serialized protobuf object (bytes)'''
 
-            
-        # if we don't have the zip file yet, download it
-        # make sure we use stream=True to not run into 'potential' memory problems
-        
+        # create the ServerResponse that has the error message with it
+        sunMsg = SunspotMessages.ActualSunspotMessage()
+        sunMsg.timestamp = self._getTimestamp()
+        sunMsg.message_type = SunspotMessages.ActualSunspotMessage.SERVER_RESPONSE
+        sunMsg.server_response_message.data_we_contain = SunspotMessages.ServerResponse.CONTAINS_ERROR
+        sunMsg.server_response_message.error_data.error_code = errCode
+        sunMsg.server_response_message.error_data.error_message = errMsg
 
+        self.logger.error(logMsg)
 
-        with closing(requests.get(Root.GTFS_ZIP_FILE_URL, stream=True)) as resp:
+        cherrypy.response.status = httpErrCode
 
-            cherrypy.log("\tResponse was: {}".format(resp.status_code))
-
-            if resp.status_code == 200:
-
-                # see if the 'last modified' date has changed
-                remoteDate = arrow.get(resp.headers["last-modified"], Root.HTTP_HEADER_LAST_MODIFIED_FORMAT)
-
-                configDate = arrow.get(configObj["gtfs_zip_last_modified"])
-
-                if remoteDate > configDate:
-
-                    # set new modified date
-                    configObj["gtfs_zip_last_modified"] = remoteDate.isoformat()
-
-                    cherrypy.log("Remote last modified ({}) date is bigger then config date ({}), downloading new file".format(remoteDate, configDate))
-                    cherrypy.log("Downloading file from {}".format(Root.GTFS_ZIP_FILE_URL))
-                    cherrypy.log("Writing to file: {}".format(Root.GTFS_ZIP_FILE_STRING))
-                    with open(Root.GTFS_ZIP_FILE_STRING, "wb") as f:
-                        for iterFileChunk in resp.iter_content(chunk_size=10240):
-                            f.write(iterFileChunk)
-                        cherrypy.log("\tFile written successfully")
-
-                else:
-                    cherrypy.log("Remote last modified ({}) not bigger then config date ({}), not downloading".format(remoteDate, configDate))
+        return sunMsg.SerializeToString()
 
 
-        
-        #cherrypy.log("gtfs file already downloaded")
+    class CompressorNone:
 
 
-        # now open the zip file and get the csv files from it
+        def __init__(self, logger):
+            '''compresion object that we return from _getCompressorObj, this is for COMPRESSION_NONE'''
+
+            self.logger = logger
+            self.compressionType = SunspotMessages.COMPRESSION_NONE
 
 
-        gtfsZipFile = zipfile.ZipFile(Root.GTFS_ZIP_FILE_STRING, "r")
-        cherrypy.log("Opened zip file successfully")
+        def compress(self, bytesToCompress):
+            ''' compresses the data with COMPRESSION_NONE
+            @param bytesToCompress - the bytes to compress, duh
+            @return the compressed bytes'''
 
-        finalData = GTFSData.FinalGtfsData()
-
-
-        # we need certain files
-        csvFilesDict = dict()
-        
-        # the io.TextIOWrapper is how we open a file within a ZipFile object in text mode rather then binary mode
-        csvFilesDict["stops"] = io.TextIOWrapper(gtfsZipFile.open("stops.txt", "r"), encoding="utf-8", newline="")
-        csvFilesDict["trips"] = io.TextIOWrapper(gtfsZipFile.open("trips.txt", "r"), encoding="utf-8", newline="")
-        csvFilesDict["routes"] = io.TextIOWrapper(gtfsZipFile.open("routes.txt", "r"), encoding="utf-8", newline="")
-        csvFilesDict["shapes"] = io.TextIOWrapper(gtfsZipFile.open("shapes.txt", "r"), encoding="utf-8", newline="")
-        csvFilesDict["stop_times"] = io.TextIOWrapper(gtfsZipFile.open("stop_times.txt", "r"), encoding="utf-8", newline="")
-
-        cherrypy.log("Opened txt files within zip files successfully")
-
-        ####################
-        # parse the stops.txt file
-        ####################
-
-        self.parseStopsTxt(finalData, csvFilesDict["stops"])
+            return bytesToCompress
 
 
-        ####################
-        # parse the routes.txt file
-        ####################
+    class CompressorLzmaXz:
 
-        self.parseRoutesTxt(finalData, csvFilesDict["routes"])
+        def __init__(self, logger):
+            '''compresion object that we return from _getCompressorObj, this is for COMPRESSION_LZMA_XZ'''
 
-        # start with routes
-        # routesReader = csv.DictReader(csvFilesDict["routes"])
+            self.logger = logger
+            self.compressionType = SunspotMessages.COMPRESSION_LZMA_XZ
 
-        # routeOne = next(routesReader)
-        # cherrypy.log("Choosing one route, it is {} - {}".format(routeOne["route_id"], routeOne["route_long_name"]))
+        def compress(self, bytesToCompress):
+            '''@param bytesToCompress - the bytes to compress, duh
+            @return the compressed bytes'''
 
-        # now get a trip (first one has the same route id of the route we just got which
-        # is good for testing since we are only doing once at the moment) from the csv
-
-        # tripsReader = csv.DictReader(csvFilesDict["trips"])
-        # tripOne = next(tripsReader)
-
-        # cherrypy.log("Picking one trip, it is {} - {}".format(tripOne["trip_id"], tripOne["trip_short_name"]))
-
-        # # now that we have a trip we use that trip_id to get all the stop_times (and later , stops)
-        # # that correspond with that trip from the csv
-        # listOfStopTimesDicts = list()
-        # stopTimesReader = csv.DictReader(csvFilesDict["stop_times"])
-        # for stopTimesRow in stopTimesReader:
-        #     if stopTimesRow["trip_id"] == tripOne["trip_id"]:
-        #         listOfStopTimesDicts.append(stopTimesRow)
-
-        # cherrypy.log("There are {} stop times in this trip".format(len(listOfStopTimesDicts)))
-
-        # # now collect all the stop ids
-        # listOfStopIds = list()
-        # for iterStopTimeDict in listOfStopTimesDicts:
-        #     #cherrypy.log("stopSequence: {} -> stopId: {}".format(iterStopTimeDict["stop_sequence"], iterStopTimeDict["stop_id"]))
-        #     listOfStopIds.append(iterStopTimeDict["stop_id"])
-
-
-        # cherrypy.log("Got the stop ids we want, they are: {}".format(listOfStopIds))
-        # # now collect all the relevant stops from the csv
-        # # TODO: THIS IS THE STEP THAT IS GETTING THE STOP_SEQUENCES OUT OF ORDER
-        # # its because we are iterating over the stops.txt csv rather then iterating over the listOfStopIds
-        # # and then finding stuff inside the csv. (we are doing it the wrong way around)
-
-        # listOfStopDicts = list()
-        # stopReader = csv.DictReader(csvFilesDict["stops"])
-        # for stopRow in stopReader:
-        #     if stopRow["stop_id"] in listOfStopIds:
-        #         listOfStopDicts.append(stopRow)
+            self.logger.error("CompressorLzmaXz: beginning compression")
+            zeBytes =  lzma.compress(bytesToCompress, format=lzma.FORMAT_XZ)
+            self.logger.error("CompressorLzmaXz: finished compression")
+            return zeBytes
 
 
 
-        # now we should have enough information to create a protocol buffer object
-
-        cherrypy.log("Creating protobuf object")
-
-        # # now seralize the protobuf message into a byte string
-        byteString = finalData.SerializeToString() 
-
-        cherrypy.log("Protobuf object created successfully, returning binary response")
-
-        # set the mime type to be octet stream
-        cherrypy.response.headers['Content-Type'] =  "application/octet-stream"
-
-
-        return zlib.compress(byteString) 
-
-
-    def parseRoutesTxt(self, protoBufObj, routesFileObj):
-        ''' parse the routes.txt file object into the protobuf object
+    def _getCompressorObj(self, reqCompressionList):
+        ''' helper method to take in the requested_compression repeated field from the 
+        ServerQuery and return a object that will compress it once 'compress()' is called
+        @param reqCompressionList - the repeated CompressionType field
+        @return a object to compress the data
         '''
 
-        routeReader = csv.DictReader(routesFileObj)
+        objToReturn = self.CompressorNone
+        
+        self.logger.error("_getCompressorObj(): The compression list we got: {}".format(str(reqCompressionList)))
 
-        for iterRow in routeReader:
+        for iterCompression in reqCompressionList:
 
-            tmpProtoObj = protoBufObj.routes.add()
+            # if its COMPRESSION_NONE, then we skip it as its already 
+            # the default and every message should have this.
+            if iterCompression == SunspotMessages.COMPRESSION_NONE:
+                continue
 
-            tmpProtoObj.route_id = iterRow["route_id"]
-            tmpProtoObj.agency_id = iterRow["agency_id"]
-            tmpProtoObj.route_short_name = iterRow["route_short_name"]
-            tmpProtoObj.route_long_name = iterRow["route_long_name"]
-            tmpProtoObj.route_desc = iterRow["route_desc"]
-            tmpProtoObj.route_type = int(iterRow["route_type"])
-            tmpProtoObj.route_url = iterRow["route_url"]
-            tmpProtoObj.route_color = iterRow["route_color"]
-            tmpProtoObj.route_text_color = iterRow["route_text_color"]
-            #tmpProtoObj.trips = 
-
-
-    def parseStopsTxt(self, protoBufObj, stopsFileObj):
-        ''' parse the stops.txt file object into the protobuf object
-        '''
-
-        stopReader = csv.DictReader(stopsFileObj)
-
-        for iterRow in stopReader:
-
-
-            tmpProtoObj = protoBufObj.stops.add()
-
-
-            tmpProtoObj.stop_id = iterRow["stop_id"]
-            tmpProtoObj.stop_code = iterRow["stop_code"]
-            tmpProtoObj.stop_name = iterRow["stop_name"]
-            tmpProtoObj.stop_desc = iterRow["stop_desc"]
-
-            # create stop_coord
-            tmpProtoObj.stop_coord.lat = float(iterRow["stop_lat"])
-            tmpProtoObj.stop_coord.lon = float(iterRow["stop_lon"])
-
-            tmpProtoObj.zone_id = iterRow["zone_id"]
-            tmpProtoObj.stop_url = iterRow["stop_url"]
-            if not iterRow["location_type"]: # in case its just blank
-                tmpProtoObj.location_type = 0
+            elif iterCompression == SunspotMessages.COMPRESSION_LZMA_XZ:
+                self.logger.error("_getCompressorObj(): Returning CompressorLzmaXz")
+                objToReturn = self.CompressorLzmaXz
+                break
             else:
-                tmpProtoObj.location_type = iterRow["location_type"]
-            tmpProtoObj.parent_station = iterRow["parent_station"]
-            tmpProtoObj.wheelchair_boarding = int(iterRow["wheelchair_boarding"])
+                self.logger.error("WARNING: unknown compression type? {}".format(iterCompression))
+
+        return objToReturn(self.logger)
 
 
 
+    def _getTimestamp(self):
+        ''' helper method to get a timestamp'''
 
-class ServerConfig:
-    ''' class that just handles loading and saving our server config and whatnot
-    '''
+        return str(arrow.utcnow().timestamp)
+
+
+    def GET(self):
+        return "hello"
+
+
+    @cherrypy.tools.accept(media='application/octet-stream')
+    def POST(self):
+
+        configObj = ServerConfig(self.constants.CONFIG_FILE_PATH)
+
+        self.logger.error("Current dir: {}".format(os.getcwd()))
+        self.logger.error("application config: {}".format(application.config))
+        self.logger.error("process request: {}".format(cherrypy.request.process_request_body))
+        self.logger.error("method: {}".format(cherrypy.request.method))
+
+        data = cherrypy.request.body.read()
+        self.logger.error("The data is: {}".format(data))
+
+
+        # read the data that the client sent us
+        clientObj = SunspotMessages.ActualSunspotMessage()
+        try:
+            clientObj.ParseFromString(data)
+        except google.protobuf.message.DecodeError as e:            
+            return self._handleError(SunspotMessages.ServerError.INVALID_PROTOBUF_MSG, 
+                "ERROR: failed to decode SunspotMessages from data: '{}'".format(e),
+                "couldn't decode protobuf, error: {}".format(e))
+
+
+        # ok, what does the client want?
+        msgType = clientObj.message_type
+
+        if msgType == SunspotMessages.ActualSunspotMessage.SERVER_QUERY:
+
+            # make sure that we have the actual data for this
+            if not clientObj.HasField("server_query_message"):
+                return self._handleError(SunspotMessages.ServerError.INVALID_REQUEST, 
+                    "ERROR: got a ActualSunspotMessage.message_type of SERVER_QUERY but we have no " 
+                        + "'sever_query_message' data! protobuf: {}".format(str(clientObj)),
+                    "got SERVER_QUERY message_type but there is no 'server_query_message' data!")
+
+
+            ###################
+            # ok we have that, see what they are asking for.
+            ###################
+            askingFor = clientObj.server_query_message.asking_for
+
+            if askingFor == SunspotMessages.ServerQuery.NEED_FULL_DB:
+
+                # give the user the full db
+                fullDbProtoObj = SunspotMessages.ActualSunspotMessage()
+                fullDbProtoObj.timestamp = self._getTimestamp()
+                fullDbProtoObj.message_type = SunspotMessages.ActualSunspotMessage.SERVER_RESPONSE
+
+                respMsg = fullDbProtoObj.server_response_message
+
+                respMsg.data_we_contain = respMsg.CONTAINS_FULL_DB
+                respMsg.version_of_db = str(0) # TODO FIX
+
+                compressorObject = self._getCompressorObj(clientObj.server_query_message.requested_compression)
+
+                with open("/var/www/sunspot/db.sqlite", "rb") as f:
+                    respMsg.actual_data = compressorObject.compress(f.read())
+
+                respMsg.compression_type = compressorObject.compressionType
+
+                cherrypy.response.headers['Content-Type'] = "application/octet-stream"
+                return fullDbProtoObj.SerializeToString()
+
+            elif askingFor == SunspotMessages.ServerQuery.NEED_PATCH:
+                pass
+
+            else:
+                self._handleError(SunspotMessages.ServerError.SERVER_DOESNT_RECOGNIZE,
+                "ERROR: got a ActualSunspotMessage.server_query_message.asking_for that we do not recognize,"
+                    + " is our protobuf class out of date??? protobuf: {}".format(str(clientObj)),
+                "Server doesn't recognize the ActualSunspotMessage.server_query_message.asking_for enum", 
+                500)
+
+            ###################
+
+
+        elif msgType == SunspotMessages.ActualSunspotMessage.SERVER_RESPONSE:
+            pass
+
+        else:
+
+            return self._handleError(SunspotMessages.ServerError.SERVER_DOESNT_RECOGNIZE,
+                "ERROR: got a ActualSunspotMessage.message_type that we do not recognize,"
+                    + " is our protobuf class out of date??? protobuf: {}".format(str(clientObj)),
+                "Server doesn't recognize the ActualSunspotMessage.message_type enum", 
+                500)
+            
+            
+
+
+
+        self.logger.error("the object was: {}".format(str(clientObj)))
+
+        return "hello"
+
+
+class TestZip():
+
+    exposed = True
+
 
     def __init__(self):
-        '''constructor'''
 
-        self.theObj = None
-        self.filePath = None
+        self.logger = None
+        self.zipFiles = [
+            "gtfs_zip_1route.zip",
+            "gtfs_zip_5route.zip",
+            "gtfs_zip_10route.zip",
+            "gtfs_zip_20route.zip",
+            "gtfs_zip_30route.zip",
+            "gtfs_zip_40route.zip",
+            "gtfs_zip_49route.zip"
 
-    @staticmethod
-    def load(filePath):
-        ''' loads and returns the yaml configuration file as a dict'''
+        ]
 
-
-        tmp = ServerConfig()
-        tmp.theObj = yaml.safe_load(open(filePath, "rb"))
-        tmp.filePath = filePath
-
-        return tmp
-
-    def save(self):
-        ''' saves the config'''
-
-        with open(self.filePath, "w", encoding="utf-8") as f:
-            f.write(yaml.safe_dump(self.theObj))
-
-
-    def __getitem__(self, key):
-        '''implementation of obj[item]'''
-
-        return self.theObj["sunspot_server_config"][key]
-
-    def __setitem__(self, key, value):
-        '''implementation of obj[item] = something'''
-
-        self.theObj["sunspot_server_config"][key] = value
-
-        self.save()
-
-
-    def __delitem__(self, key):
-        '''implementation of del obj["item"]'''
-
-        del self.theObj[key]
-
-        self.save()
+        self.dbStartTime = 1408657604
 
 
 
+    def GET(self, num=None, length=None):
+
+        if length:
+            return str(len(self.zipFiles))
+
+        if num is None or int(num) >= len(self.zipFiles):
+            raise cherrypy.HTTPError(401)
+
+        tmpZipFilePath = pathlib.Path("/var/www/sunspot/",self.zipFiles[int(num)])
+
+        modtime = (self.dbStartTime + (int(num) * 5))
 
 
+        # make it so that the modified times are different so we get different times / versions when we download them!
+        # NOTE: THE ZIP FILES MUST BE OWNED by www-data for this call to work!
+        os.utime(str(tmpZipFilePath), times=(modtime, modtime))
+
+        self.logger.error("Testzip: num is {}, serving {}".format(num, tmpZipFilePath))
+        return serve_file(str(tmpZipFilePath), "application/zip", str(tmpZipFilePath))
+        
 
 
-config = {'/':
+config = {
+    '/':
     {
-        "log.error_file": "/var/www/sunspot_error.log"
-    } }
+        'request.dispatch': cherrypy.dispatch.MethodDispatcher(),
+        "log.error_file": "/var/www/sunspot_error.log",
+        "constants_yaml": "/var/www/sunspot/constants_config.yaml"
+    } ,
+    "/testzip":
+    {
+        'request.dispatch': cherrypy.dispatch.MethodDispatcher(),
+        "log.error_file": "/var/www/sunspot_error.log",
+        "constants_yaml": "/var/www/sunspot/constants_config.yaml"
+    }}
 
-application = cherrypy.Application(Root(), script_name=None, config=config)
+root = Root()
+root.testzip = TestZip()
+application = cherrypy.Application(root, script_name="/sunspot", config=config)
+root.testzip.logger = application.log
+root._setApp(application)

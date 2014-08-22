@@ -1,0 +1,54 @@
+
+
+###################
+notes on how the flow of the application (at least the downloading / requesting the database/patch data)
+###################
+
+
+    so the phone starts out with a copy of the database that is probably outdated by the time the user downloads it
+
+    so then the app asks the server, and sends a ServerQuery protobuf message asking for the full database (at start) (or maybe a patch, who knows)
+
+    so then depending on what the client asks for, 
+
+        if its a full database
+            we send the full sqlite3 database in the ServerResponse protobuf message
+
+        if its a patch request:
+
+            then we look at the version the client says their database is, and then we look at the version of the current most 
+            up to date database. 
+
+                Then we consult some database (sqlite? leveldb? something?) that looks to see if we have a BSdiff patch file generated
+                that patches the copy of the database that the client has to the most recent version
+
+                    if yes, then we just send that patch file to the client in a ServerResponse message
+
+                    if no, then we have to generate a BSDiff patch file from the client's version of the database to the most current copy of the database
+
+                        if we can find the clients version of the database (the old version) then we generate the patch
+
+                        if we can't find it, then we have to send a FULL_DB_FORCED ServerResponse message back to the client
+                        with the full copy of the database
+
+
+    Also part of this, is what happens when the server / cron job + script finds a new copy of the GTFS zipped data to download
+
+
+        We download it, and parse it, and output a new database with a new version number
+
+        We then save this database into a directory that stores all of the previous copies of the database 
+
+        We delete all of the patch files that went from various old versions of the database to the now outdated version of the database
+
+        Then we set the new database as the newest copy, and then things continue
+
+            do we then generate a patch file from every old copy of the database to this new copy? to save processing time later?
+            or do we do it when the user requests it? probably do it before hand...
+
+
+        TODO: maybe we have a set number of 'old versions' that we keep around, and then if there are copies of the database 
+        that are older then our cutoff, then we delete those copies of the database, which means less patch files to keep track of, and
+        if someone requests a patch file from a 'culled' version of the database to the newest one, then we just send a 
+        FULL_DB_FORCED message back to the server along with the full copy of the latest database. If we don't do this then we could 
+        have a ton of old versions of the database and a ton of patches to have to deal with....
