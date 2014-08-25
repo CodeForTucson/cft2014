@@ -102,9 +102,9 @@ upload_config:
             upload_to: "/var/www/sunspot"
             chown_to: ""
 
-        server_config.py:
+        server_database.py:
 
-            filepath: "sunspot_server/server_config.py"
+            filepath: "sunspot_server/server_database.py"
             upload_to: "/var/www/sunspot"
             chown_to: ""
 

@@ -113,12 +113,18 @@ def uploadFiles(args):
 
         uploadInfoDict = uploadEntryDict[iterUploadEntryKey]
 
+        fileToUpload = pathlib.Path(uploadInfoDict["filepath"])
+        # make sure the file exists first
+        if not fileToUpload.exists():
+            uploadLogger.error("ERROR: Could not upload, the file doesn't exist...({})".format(fileToUpload))
+            continue
+
         # here we are taking the upload_to path and comparing it to the rsync_module_path
         # that way if the rsync_module_path is /something, and the upload_to is /something/hello,
         # then we only put /hello in the destination url
         #
         # the longer path should be the one having 'relative_to' called on it
-        relativeToRsyncModulePath = pathlib.Path(uploadInfoDict["upload_to"]).relative_to(config["rsync_module_path"])
+        relativeToRsyncModulePath = pathlib.PurePosixPath(uploadInfoDict["upload_to"]).relative_to(config["rsync_module_path"])
 
         uploadLogger.debug("path relative to the rsync module's path is: {}".format(relativeToRsyncModulePath))
 
@@ -135,7 +141,7 @@ def uploadFiles(args):
         uploadCmd = [
             binNamesDict["rsync_bin"], 
             "-q", 
-            uploadInfoDict["filepath"], 
+            str(fileToUpload), 
             "--password-file",
             "{}".format(config["rsync_passwd_file"]),  
             "{}::{}/{}".format(config["remote_url"], config["rsync_module_name"], relativeToRsyncModulePath )
