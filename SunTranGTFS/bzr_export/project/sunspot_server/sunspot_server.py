@@ -46,7 +46,7 @@ import pathlib
 if "/var/www/sunspot" not in sys.path:
     sys.path.append("/var/www/sunspot")
 from constants import Constants
-from server_database import ServerDatabase
+from server_database import ServerDatabase, ServerDatabaseEnums
 
 
 ###################
@@ -112,8 +112,8 @@ class Root:
         '''compresion object that we return from _getCompressorObj, this is for COMPRESSION_NONE'''
 
         def __init__(self, logger):
-           ''' constructor 
-           @param logger - a logger object'''
+            ''' constructor 
+            @param logger - a logger object'''
 
             self.logger = logger
             self.compressionType = SunspotMessages.COMPRESSION_NONE
@@ -193,7 +193,7 @@ class Root:
         ''' called when we recieve a POST request'''
 
 
-        configObj = ServerDatabase(self.constants.CONFIG_FILE_PATH)
+        sbObj = ServerDatabase(self.constants.CONFIG_DB_PATH, self.logger)
 
         self.logger.error("Current dir: {}".format(os.getcwd()))
         self.logger.error("application config: {}".format(application.config))
@@ -246,7 +246,20 @@ class Root:
 
                 compressorObject = self._getCompressorObj(clientObj.server_query_message.requested_compression)
 
-                with open("/var/www/sunspot/db.sqlite", "rb") as f:
+                # need to ask our database what the full path for the latest db is.
+                latestDbTime = None
+                latestDbPath = None
+                try:
+                    latestDbTime = sbObj[ServerDatabaseEnums.KEY_LAST_DOWNLOAD_TIME]
+
+                    latestDbPath = sbObj.getWithPrefix(ServerDatabaseEnums.PREFIX_DATABASE_TIME_TO_LOCATION, [latestDbTime])
+
+                except Exception as e:
+                    return self._handleError(SunspotMessages.ServerError.SERVER_ERROR, "ERROR: got KeyError when reading from "
+                        + " ServerDatabase when trying to get the path to the latest database: {}".format(e), 
+                        "Server encountered an error", 500)
+
+                with open(latestDbPath, "rb") as f:
                     respMsg.actual_data = compressorObject.compress(f.read())
 
                 respMsg.compression_type = compressorObject.compressionType
@@ -258,7 +271,7 @@ class Root:
                 pass
 
             else:
-                self._handleError(SunspotMessages.ServerError.SERVER_DOESNT_RECOGNIZE,
+                return self._handleError(SunspotMessages.ServerError.SERVER_DOESNT_RECOGNIZE,
                 "ERROR: got a ActualSunspotMessage.server_query_message.asking_for that we do not recognize,"
                     + " is our protobuf class out of date??? protobuf: {}".format(str(clientObj)),
                 "Server doesn't recognize the ActualSunspotMessage.server_query_message.asking_for enum", 

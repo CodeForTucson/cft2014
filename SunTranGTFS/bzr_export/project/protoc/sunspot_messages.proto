@@ -31,6 +31,9 @@ message SunspotMessages {
 
             // server doesn't recognize something (like an enum), its protobuf class is probably out of date
             SERVER_DOESNT_RECOGNIZE = 2;
+
+            // something is wrong on the server side..
+            SERVER_ERROR = 3;
         }
 
         // error code

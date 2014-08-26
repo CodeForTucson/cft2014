@@ -1,5 +1,7 @@
 import leveldb
 from enum import Enum
+import logging
+import cherrypy._cplogging
 
 class ServerDatabaseEnums:
     ''' this class will hold various full keys or 'prefixes' for leveldb keys
@@ -19,14 +21,29 @@ class ServerDatabase:
     You should pass in various ServerDatabaseEnums class values to the methods in this class, to avoid magic numbers/values! 
     '''
 
+    def _log(self, msg):
+
+        self.lgMthd(msg)
+
     def __init__(self, databasePath, logger):
         '''constructor
         @param databasePath - the path to the leveldb database
         @param logger - a logger object'''
 
+        self.lgMthd = None
+
         self.db = leveldb.LevelDB(databasePath)
         self.dbFilePath = databasePath
-        self.lg = logger.getChild("ServerDatabase")
+
+        self.lg = logger
+        if isinstance(logger, cherrypy._cplogging.LogManager):
+            self.lgMthd = self.lg.error_log.debug
+        else:
+            # if its a cherrypy LogManager
+            self.lgMthd = self.lg.error
+
+        self._log("Opening database at {}".format(databasePath))
+
 
 
 
@@ -36,7 +53,7 @@ class ServerDatabase:
         @param key - a string
         @return A STRING'''
 
-        
+        self._log("retrieving value from key '{}'".format(key))
 
         return self.db.Get(key.encode("utf-8")).decode("utf-8")
 
@@ -47,7 +64,7 @@ class ServerDatabase:
         @param value - a string
         '''
 
-        self.lg.debug("Setting key: {} , value: {}".format(key, value))
+        self._log("Setting key: '{}' , value: '{}'".format(key, value))
 
         self.db.Put(key.encode("utf-8"), value.encode("utf-8"))
 
@@ -59,7 +76,7 @@ class ServerDatabase:
         @param key - a string
         '''
 
-        self.lg.debug("Deleting key: {}".format(key))
+        self._log("Deleting key: '{}'".format(key))
         self.db.Delete(key.encode("utf-8"))
 
     def __del__(self):
@@ -71,7 +88,7 @@ class ServerDatabase:
 
         del self.db
 
-        self.lg.debug("ServerDatabase.__del__() called, closing database at {}".format(self.dbFilePath))
+        self._log("ServerDatabase.__del__() called, closing database at '{}'".format(self.dbFilePath))
 
 
     def setWithPrefix(self, key, formatEntries, value):
