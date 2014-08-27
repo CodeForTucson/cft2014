@@ -46,7 +46,7 @@ import pathlib
 if "/var/www/sunspot" not in sys.path:
     sys.path.append("/var/www/sunspot")
 from constants import Constants
-from server_database import ServerDatabase, ServerDatabaseEnums
+from server_database import CherrypyServerDatabase, ServerDatabaseEnums
 
 
 ###################
@@ -76,6 +76,7 @@ class Root:
         # a recursive dependency here
         self.app = app
         self.logger = self.app.log
+        self.logger.error_log.setLevel("DEBUG")
 
         # self.logger.error(str(app.config))
         # self.logger.error(app.config["/"]["constants_yaml"])
@@ -193,7 +194,7 @@ class Root:
         ''' called when we recieve a POST request'''
 
 
-        sbObj = ServerDatabase(self.constants.CONFIG_DB_PATH, self.logger)
+        sbObj = CherrypyServerDatabase(self.constants.CONFIG_DB_PATH, self.logger)
 
         self.logger.error("Current dir: {}".format(os.getcwd()))
         self.logger.error("application config: {}".format(application.config))

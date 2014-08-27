@@ -1,7 +1,6 @@
 import leveldb
 from enum import Enum
 import logging
-import cherrypy._cplogging
 
 class ServerDatabaseEnums:
     ''' this class will hold various full keys or 'prefixes' for leveldb keys
@@ -14,6 +13,8 @@ class ServerDatabaseEnums:
     PREFIX_DB_PATCH = "{}{}_{}".format(KEY_DB_PATCH_LETTER, "{}", "{}")
 
 
+
+
 class ServerDatabase:
     ''' class that wraps around a LevelDB database that holds various stuff about the state of our server,
     what databases we have, what patches we have, what is the latest version of the GTFS data, etc.
@@ -23,24 +24,17 @@ class ServerDatabase:
 
     def _log(self, msg):
 
-        self.lgMthd(msg)
+        self.lg.debug(msg)
 
     def __init__(self, databasePath, logger):
         '''constructor
         @param databasePath - the path to the leveldb database
         @param logger - a logger object'''
 
-        self.lgMthd = None
-
         self.db = leveldb.LevelDB(databasePath)
         self.dbFilePath = databasePath
 
         self.lg = logger
-        if isinstance(logger, cherrypy._cplogging.LogManager):
-            self.lgMthd = self.lg.error_log.debug
-        else:
-            # if its a cherrypy LogManager
-            self.lgMthd = self.lg.error
 
         self._log("Opening database at {}".format(databasePath))
 
@@ -158,6 +152,15 @@ class ServerDatabase:
         for iterEntry in toDelList:
             self.lg.debug("Deleting key {}".format(iterEntry))
             self.db.Delete(iterEntry)
+
+class CherrypyServerDatabase (ServerDatabase):
+    ''' subclass of ServerDatabase, the only reason we do this
+    is because cherrypy's LogManager is not a logging.logger so we have to do 
+    something different in order to log'''
+
+
+    def _log(self, msg):
+        self.lg.error(msg, "ServerDatabase", severity=logging.DEBUG)
 
 
 
