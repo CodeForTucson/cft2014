@@ -10,3 +10,11 @@ CHOWN_GROUP: "www-data"
 DB_FOLDER: "/var/www/sunspot/dbs/"
 DB_PATCHES_FOLDER: "/var/www/sunspot/dbs_patches/"
 CONFIG_DB_PATH: "/var/www/sunspot/configdb"
+
+SERVERDATABASE_LOGGING_OUTPUT_TO_CONSOLE: false # if false then we use the rotating file handler
+
+# ignored if we OUTPUT_TO_CONSOLE is true
+SERVERDATABASE_LOGGING_OUTPUT_NAME: "/var/www/sunspot/logs/LeveldbServer.log"
+SERVERDATABASE_LOGGING_MAXBYTES: 102400
+SERVERDATABASE_LOGGING_NUMBACKUPS: 5
+SERVERDATABASE_LOGGING_LEVEL: "DEBUG"
