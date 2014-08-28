@@ -61,7 +61,7 @@ def repeat():
         print("outer loop start")
 
         protoObj = LeveldbServerMessages.ActualData()
-        protoObj.timestamp = str(arrow.now().timestamp)
+        protoObj.timestamp = arrow.now().timestamp # int64
         protoObj.type = LeveldbServerMessages.ActualData.QUERY
         query = protoObj.query
 
@@ -79,7 +79,7 @@ def repeat():
 
         else:
             print("set")
-            query.type = LeveldbServerMessages.ServerQuery.GET
+            query.type = LeveldbServerMessages.ServerQuery.SET
 
 
 
@@ -101,7 +101,13 @@ def repeat():
         tmpdata = yield from reader.read(8192)
         print("reading, got {}".format(tmpdata))
 
-        if not tmpdata:
+        try:
+            respProto = LeveldbServerMessages.ActualData.FromString(tmpdata)
+            print("proto obj: {}".format(respProto))
+        except:
+            pass
+
+        if not tmpdata or reader.at_eof():
             print("done reading, breaking")
             break
 

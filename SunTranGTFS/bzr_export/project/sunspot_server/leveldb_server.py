@@ -19,6 +19,7 @@ import random
 import yaml
 import leveldb
 import google.protobuf.message # for DecodeError 
+import arrow
 
 
 # project imports
@@ -71,6 +72,24 @@ class LeveldbServer(asyncio.Protocol):
 
         return "<port:{:5d},id:{:5s}>".format(peernameTuple[1], self.id)
 
+    def _returnErrorProtobuf(self, errCode, errMsg):
+        ''' helper method that writes a error protobuf message to the transport and closes the
+        transport's connection'''
+
+        errProto = LeveldbServerMessages.ActualData()
+        errProto.timestamp = arrow.now().timestamp
+        errProto.type = LeveldbServerMessages.ActualData.ERROR
+
+        errProto.error.error_code = errCode
+        errProto.error.error_message = errMsg
+
+        self.transport.write(errProto.SerializeToString())
+        self.transport.close() 
+
+
+
+
+
     def connection_made(self, transport):
         ''' called when a client makes a connection to this server
         @param transport - The transport argument is the transport representing the connection. 
@@ -95,12 +114,82 @@ class LeveldbServer(asyncio.Protocol):
 
             # if they sent a malformed message, close the connection
             self.lg.error("Couldn't decode sent data, disconnecting this client. error: '{}'".format(e))
-            self.transport.write("You sent bad data. Goodbye\n".encode("utf-8"))
-            self.transport.close()
-            return
+            return self._returnErrorProtobuf(LeveldbServerMessages.Error.INVALID_REQUEST, "Could not decode protobuf message")
 
-        self.lg.info("data: {}".format(str(protoObj)))
-        self.transport.write(b'ok')
+        self.lg.debug("protobuf data recieved: \n********\n{}\n*********".format(str(protoObj)))
+
+        # see what type it is
+        # TODO ensure that its a query and not a response
+        tmpQuery = protoObj.query
+
+        # the protobuf object we will be writing at the end
+        returnProtoObj = LeveldbServerMessages.ActualData()
+
+        returnProtoObj.type = LeveldbServerMessages.ActualData.RESPONSE
+        returnProtoObj.timestamp = arrow.now().timestamp
+        returnProtoObj.response.query_ran.CopyFrom(protoObj.query)
+
+        if tmpQuery.type == LeveldbServerMessages.ServerQuery.GET:
+
+            self.lg.debug("in GET section")
+            
+            
+            keyToLookUp = tmpQuery.key
+            self.lg.debug("\tattempting Get() with key: {}".format(keyToLookUp))
+            try:
+                # encode the string to look it up, we get back bytes, so decode that to turn it back into a string
+                returnProtoObj.response.returned_value = LeveldbServer.db.Get(keyToLookUp.encode("utf-8")).decode("utf-8")
+                returnProtoObj.response.type = LeveldbServerMessages.ServerResponse.GET_RETURNED_VALUE
+                self.lg.debug("\tGet successful, got {}".format(returnProtoObj.response.returned_value))
+
+            except KeyError:
+                self.lg.debug("\tGet unsuccessful, got keyerror")
+                # error, set type to be the keyerror one
+                returnProtoObj.response.type = LeveldbServerMessages.ServerResponse.GET_PRODUCED_KEYERROR
+                # returned_value is nothing
+                returnProtoObj.response.ClearField("returned_value")
+
+
+
+        elif tmpQuery.type == LeveldbServerMessages.ServerQuery.SET:
+
+            self.lg.debug("in SET section")
+
+            # this operation can't really fail
+            keyToUse = tmpQuery.key
+            valueToUse = tmpQuery.value
+            self.lg.debug("\tAttempting Set() with key: {}, value: {}".format(keyToUse, valueToUse))
+
+            LeveldbServer.db.Put(keyToUse.encode("utf-8"), valueToUse.encode("utf-8"))
+            self.lg.debug("\tSet successful")
+
+            returnProtoObj.response.type = LeveldbServerMessages.ServerResponse.SET_SUCCESSFUL
+
+            
+        elif tmpQuery.type == LeveldbServerMessages.ServerQuery.DELETE:
+            pass
+        elif tmpQuery.type == LeveldbServerMessages.ServerQuery.START_RANGE_ITER:
+            pass
+        elif tmpQuery.type == LeveldbServerMessages.ServerQuery.DELETE_ALL_IN_RANGE:
+            pass
+        elif tmpQuery.type == LeveldbServerMessages.ServerQuery.RETURN_ATONCE_RANGE_ITER:
+            pass
+
+        else:
+
+            # don't recognize the query type
+            self.lg.error("didn't recognize the ServerQuery.type field, is this proto file out of date? entire obj is: {}"
+                .format(str(protoQuery)))
+            return self._returnErrorProtobuf(LeveldbServerMessages.Error.SERVER_DOESNT_RECOGNIZE, 
+                "Didn't recognize the ServerQuery.type field... it was {}".format(tmpQuery.type))
+
+
+        # return the result
+        returnBytes = returnProtoObj.SerializeToString()
+        self.lg.debug("writing to transport: {}".format(returnBytes))
+        self.transport.write(returnBytes)
+
+
 
     def eof_received(self):
 

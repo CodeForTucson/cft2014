@@ -18,6 +18,8 @@ message LeveldbServerMessages {
             SET = 1;
             DELETE = 2;
             START_RANGE_ITER = 3;
+            DELETE_ALL_IN_RANGE = 4;
+            RETURN_ATONCE_RANGE_ITER = 5;
 
         }
 
@@ -41,6 +43,7 @@ message LeveldbServerMessages {
             RANGEITER_NEXTVALUE = 3;
             RANGEITER_STOPITERATION = 4;
             DELETE_SUCCESSFUL = 5; // this doesn't appear to raise an exception even if the key is not in the database
+            RANGEITER_ATONCE_RETURNED = 6;
         }
 
         // query we sent to the server
@@ -52,7 +55,36 @@ message LeveldbServerMessages {
         // returned in GET and RANGEITER_NEXTVALUE scenarios
         optional string returned_value = 3;
 
+        // returned in RANGEITER_ATONCE_RETURNED
+        repeated string multiple_returned_values = 4;
 
+
+
+    }
+
+    message Error {
+
+        enum ErrorType {
+
+            // sent bad request, wanted a DB but didn't get any data with it, etc
+            // protobuf object is well formed but logically wrong
+            INVALID_REQUEST = 0;
+
+            // protobuf message couldn't be decoded
+            INVALID_PROTOBUF_MSG = 1;
+
+            // server doesn't recognize something (like an enum), its protobuf class is probably out of date
+            SERVER_DOESNT_RECOGNIZE = 2;
+
+            // something is wrong on the server side..
+            SERVER_ERROR = 3;
+        }
+
+        // error code
+        required ErrorType error_code = 1;
+
+        // human readable error message
+        required string error_message = 2;
 
     }
 
@@ -68,14 +100,16 @@ message LeveldbServerMessages {
 
             QUERY = 0;
             RESPONSE = 1;
+            ERROR = 2;
 
         }
 
-        required string timestamp = 1;
+        required int64 timestamp = 1;
         required ActualDataType type = 2;
 
         optional ServerQuery query = 3;
         optional ServerResponse response = 4;
+        optional Error error = 5;
 
 
     }
