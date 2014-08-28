@@ -107,6 +107,10 @@ class LeveldbServer(asyncio.Protocol):
 
         self.lg.debug('data received: "{}"'.format(data))
 
+        # TODO: write a method, 'ensureMessageHas' that takes a string that is a field name, and 
+        # makes sure a protobuf message has those fields by calling HasField(), and if doesnt then
+        # we call _returnErrorProtobuf cause its an invalid request
+
 
         try:
             protoObj = LeveldbServerMessages.ActualData.FromString(data)
@@ -153,9 +157,9 @@ class LeveldbServer(asyncio.Protocol):
 
         elif tmpQuery.type == LeveldbServerMessages.ServerQuery.SET:
 
+            # this operation can't really fail
             self.lg.debug("in SET section")
 
-            # this operation can't really fail
             keyToUse = tmpQuery.key
             valueToUse = tmpQuery.value
             self.lg.debug("\tAttempting Set() with key: {}, value: {}".format(keyToUse, valueToUse))
@@ -167,7 +171,21 @@ class LeveldbServer(asyncio.Protocol):
 
             
         elif tmpQuery.type == LeveldbServerMessages.ServerQuery.DELETE:
-            pass
+            
+            # this operation also can't really fail, if you call Delete on a key that doesn't exist, the leveldb library
+            # doesn't complain...
+
+            self.lg.debug("in DELETE section")
+
+            keyToUse = tmpQuery.key
+            self.lg.debug("\tAttempting Delete() with key: {}".format(keyToUse))
+            LeveldbServer.db.Delete(keyToUse.encode("utf-8"))
+            self.lg.debug("\tDelete successful")
+
+            returnProtoObj.response.type = LeveldbServerMessages.ServerResponse.DELETE_SUCCESSFUL
+
+
+
         elif tmpQuery.type == LeveldbServerMessages.ServerQuery.START_RANGE_ITER:
             pass
         elif tmpQuery.type == LeveldbServerMessages.ServerQuery.DELETE_ALL_IN_RANGE:

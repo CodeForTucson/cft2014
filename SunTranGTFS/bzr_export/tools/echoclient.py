@@ -65,7 +65,8 @@ def repeat():
         protoObj.type = LeveldbServerMessages.ActualData.QUERY
         query = protoObj.query
 
-        result = random.choice([0,1])
+        result = random.choice([0,1,2])
+        skip = False
 
         if result == 0 and len(listOfKeysCreated) != 0:
             print("get")
@@ -77,7 +78,7 @@ def repeat():
             #msg = json.dumps({"type": "get", "key": tmpkey, "value": ""})
             print("asking for value for key '{}'".format(tmpkey))
 
-        else:
+        elif result == 1:
             print("set")
             query.type = LeveldbServerMessages.ServerQuery.SET
 
@@ -93,27 +94,46 @@ def repeat():
             print("creating key '{}' with value '{}'".format(tmpkey, value))
             # msg = json.dumps({"type": "set", "key": tmpkey, "value": value})
 
-        protoObjBytes = protoObj.SerializeToString()
-        print("writing {}".format(protoObjBytes))
-        writer.write(protoObjBytes)
+        else:
 
-        
-        tmpdata = yield from reader.read(8192)
-        print("reading, got {}".format(tmpdata))
+            if len(listOfKeysCreated) != 0:
+                print("delete")
 
-        try:
-            respProto = LeveldbServerMessages.ActualData.FromString(tmpdata)
-            print("proto obj: {}".format(respProto))
-        except:
-            pass
+                query.type = LeveldbServerMessages.ServerQuery.DELETE
 
-        if not tmpdata or reader.at_eof():
-            print("done reading, breaking")
-            break
+                thechoice = random.randint(0, len(listOfKeysCreated) - 1)
+                query.key = listOfKeysCreated.pop(thechoice)
 
-        print("sleeping")
-        print("\n\n\n")
-        yield from asyncio.sleep(5)
+                print("Deleting key '{}'".format(query.key))
+            else:
+                print("skipping..")
+                skip = True
+
+        if protoObj.IsInitialized() and not skip:
+            skip = False
+            protoObjBytes = protoObj.SerializeToString()
+            print("writing {}, {}".format(protoObjBytes, protoObj))
+            writer.write(protoObjBytes)
+
+            
+            tmpdata = yield from reader.read(8192)
+            print("reading, got {}".format(tmpdata))
+
+            try:
+                respProto = LeveldbServerMessages.ActualData.FromString(tmpdata)
+                print("proto obj: {}".format(respProto))
+            except:
+                pass
+
+            if not tmpdata or reader.at_eof():
+                print("done reading, breaking")
+                break
+
+            print("sleeping")
+            print("***********")
+            yield from asyncio.sleep(5)
+        else:
+            print("protobuf obj was not initalized")
 
 
 loop = asyncio.get_event_loop()
