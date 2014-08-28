@@ -20,6 +20,21 @@ def uploadFiles(args):
     if args.verbose:
         logger.setLevel("DEBUG")
 
+    # figure out what we are doing
+    runProtoc = True
+    runUpload = True
+
+    # since the 'onlyRunXXX' arguments are optional
+    # if they are both false then we are just running everything
+    if args.onlyRunProtoc ^ args.onlyRunUpload: # note, ^ is xor! 
+
+        # we are only running one specific thing
+        runProtoc = args.onlyRunProtoc
+        runUpload = args.onlyRunUpload
+
+    logger.info("Running protoc: {}".format(runProtoc))
+    logger.info("Running upload: {}".format(runUpload))
+
 
     ###################
     # SETTING UP (what binaries to use)
@@ -49,142 +64,145 @@ def uploadFiles(args):
     # now run the protoc stuff
     ###################
 
-    # here we try and delete the 'old' protobuf generated file before we generate a new one.
+    if runProtoc:
 
-    dictOfProtocEntries = config["protoc_list"]
+        # here we try and delete the 'old' protobuf generated file before we generate a new one.
 
-    protoLogger = logger.getChild("protoc")
-    protoLogger.info("Starting Protocol Buffer generation")
+        dictOfProtocEntries = config["protoc_list"]
 
-    # go through each of the entries we need to run protoc on
-    for iterKey in dictOfProtocEntries.keys():
+        protoLogger = logger.getChild("protoc")
+        protoLogger.info("Starting Protocol Buffer generation")
 
-        protoLogger.info("on entry '{}'".format(iterKey))
+        # go through each of the entries we need to run protoc on
+        for iterKey in dictOfProtocEntries.keys():
 
-        iterDict = dictOfProtocEntries[iterKey]
+            protoLogger.info("on entry '{}'".format(iterKey))
 
-        finalPb2Name = os.path.splitext(os.path.basename(iterDict["filepath"]))[0] + "_pb2.py"
-        outputProtoFile = currentDir / pathlib.Path(iterDict["output_path"]) / pathlib.Path(finalPb2Name)
-        protoLogger.debug("Removing old file: {}".format(outputProtoFile))
+            iterDict = dictOfProtocEntries[iterKey]
+
+            finalPb2Name = os.path.splitext(os.path.basename(iterDict["filepath"]))[0] + "_pb2.py"
+            outputProtoFile = currentDir / pathlib.Path(iterDict["output_path"]) / pathlib.Path(finalPb2Name)
+            protoLogger.debug("Removing old file: {}".format(outputProtoFile))
 
 
-        # check to see if the file exists, if it does, delete it.
-        try:
-            if not outputProtoFile.exists():
-                protoLogger.debug("old file doesn't exist, skipping")
-            else:
-                os.remove(str(outputProtoFile))
-        except Exception as e:
-            protoLogger.exception("Error when trying to remove file {}".format(outputProtoFile))
-            sys.exit()
+            # check to see if the file exists, if it does, delete it.
+            try:
+                if not outputProtoFile.exists():
+                    protoLogger.debug("old file doesn't exist, skipping")
+                else:
+                    os.remove(str(outputProtoFile))
+            except Exception as e:
+                protoLogger.exception("Error when trying to remove file {}".format(outputProtoFile))
+                sys.exit()
 
-        # run the protoc command
-        tmpCmd = [
-            binNamesDict["protoc_bin"],
-            "-I={}".format(iterDict["include_path"]),
-            iterDict["filepath"], 
-            "--python_out={}".format(iterDict["output_path"])
-            ]
+            # run the protoc command
+            tmpCmd = [
+                binNamesDict["protoc_bin"],
+                "-I={}".format(iterDict["include_path"]),
+                iterDict["filepath"], 
+                "--python_out={}".format(iterDict["output_path"])
+                ]
 
-        protoLogger.debug("Running command: {}".format(tmpCmd))
+            protoLogger.debug("Running command: {}".format(tmpCmd))
 
-        try:
-            # have stderr redirect to stdout so if we get errors we actually get a message rather then empty string
-            # for the output
-            subprocess.check_output(tmpCmd, stderr=subprocess.STDOUT)
-        except subprocess.CalledProcessError as e:
-            protoLogger.exception("Error calling protoc command: '{}': returncode: {}, output: {}"
-                .format(tmpCmd, e.returncode, e.output))
-            sys.exit()
+            try:
+                # have stderr redirect to stdout so if we get errors we actually get a message rather then empty string
+                # for the output
+                subprocess.check_output(tmpCmd, stderr=subprocess.STDOUT)
+            except subprocess.CalledProcessError as e:
+                protoLogger.exception("Error calling protoc command: '{}': returncode: {}, output: {}"
+                    .format(tmpCmd, e.returncode, e.output))
+                sys.exit()
 
 
     ###################
     # Start the uploading
     ###################
 
-    uploadLogger = logger.getChild("upload")
-    uploadLogger.info("Starting Uploading")
+    if runUpload:
+        uploadLogger = logger.getChild("upload")
+        uploadLogger.info("Starting Uploading")
 
-    uploadEntryDict = config["upload_list"]
+        uploadEntryDict = config["upload_list"]
 
-    for iterUploadEntryKey in uploadEntryDict.keys():
+        for iterUploadEntryKey in uploadEntryDict.keys():
 
-        uploadLogger.info("On entry {}".format(iterUploadEntryKey))
+            uploadLogger.info("On entry {}".format(iterUploadEntryKey))
 
-        uploadInfoDict = uploadEntryDict[iterUploadEntryKey]
+            uploadInfoDict = uploadEntryDict[iterUploadEntryKey]
 
-        fileToUpload = pathlib.Path(uploadInfoDict["filepath"])
-        # make sure the file exists first
-        if not fileToUpload.exists():
-            uploadLogger.error("ERROR: Could not upload, the file doesn't exist...({})".format(fileToUpload))
-            continue
+            fileToUpload = pathlib.Path(uploadInfoDict["filepath"])
+            # make sure the file exists first
+            if not fileToUpload.exists():
+                uploadLogger.error("ERROR: Could not upload, the file doesn't exist...({})".format(fileToUpload))
+                continue
 
-        # here we are taking the upload_to path and comparing it to the rsync_module_path
-        # that way if the rsync_module_path is /something, and the upload_to is /something/hello,
-        # then we only put /hello in the destination url
-        #
-        # the longer path should be the one having 'relative_to' called on it
-        relativeToRsyncModulePath = pathlib.PurePosixPath(uploadInfoDict["upload_to"]).relative_to(config["rsync_module_path"])
+            # here we are taking the upload_to path and comparing it to the rsync_module_path
+            # that way if the rsync_module_path is /something, and the upload_to is /something/hello,
+            # then we only put /hello in the destination url
+            #
+            # the longer path should be the one having 'relative_to' called on it
+            relativeToRsyncModulePath = pathlib.PurePosixPath(uploadInfoDict["upload_to"]).relative_to(config["rsync_module_path"])
 
-        uploadLogger.debug("path relative to the rsync module's path is: {}".format(relativeToRsyncModulePath))
+            uploadLogger.debug("path relative to the rsync module's path is: {}".format(relativeToRsyncModulePath))
 
-        # populate the command
-        # TODO: maybe have support for connecting via rsync daemon or ssh?
-        # since if we are using rsync daemon, it can automatically chown the stuff for us (configure 'gid' and 'uid'
-        # for the module in rsyncd.conf ) but then sometimes maybe we want to chown it to something different? 
-        # or rsync something outside of the module's path?
-        #
-        # EL OH EL
-        # using 'rsync://' in the destination path apparently makes subprocess mangle the fucking thing to all hell
-        # so i'm using double colons, as the rsync manpage says 'you either use a double colon :: instead of a  single  
-        # colon to separate the hostname from the path, or you use an rsync:// URL.'
-        uploadCmd = [
-            binNamesDict["rsync_bin"], 
-            "-q", 
-            str(fileToUpload), 
-            "--password-file",
-            "{}".format(config["rsync_passwd_file"]),  
-            "{}::{}/{}".format(config["remote_url"], config["rsync_module_name"], relativeToRsyncModulePath )
-            ]
+            # populate the command
+            # TODO: maybe have support for connecting via rsync daemon or ssh?
+            # since if we are using rsync daemon, it can automatically chown the stuff for us (configure 'gid' and 'uid'
+            # for the module in rsyncd.conf ) but then sometimes maybe we want to chown it to something different? 
+            # or rsync something outside of the module's path?
+            #
+            # EL OH EL
+            # using 'rsync://' in the destination path apparently makes subprocess mangle the fucking thing to all hell
+            # so i'm using double colons, as the rsync manpage says 'you either use a double colon :: instead of a  single  
+            # colon to separate the hostname from the path, or you use an rsync:// URL.'
+            uploadCmd = [
+                binNamesDict["rsync_bin"], 
+                "-q", 
+                str(fileToUpload), 
+                "--password-file",
+                "{}".format(config["rsync_passwd_file"]),  
+                "{}::{}/{}".format(config["remote_url"], config["rsync_module_name"], relativeToRsyncModulePath )
+                ]
 
-        uploadLogger.debug("Running command (rsync): '{}'".format(uploadCmd))
-
-        try:
-            subprocess.check_call(uploadCmd)
-        except subprocess.CalledProcessError as e:
-            uploadLogger.exception("Error calling rsync command: '{}': returncode: {}, output: {}"
-                .format(uploadCmd, e.returncode, e.output))
-            sys.exit()
-
-
-        #*************************
-        # CHOWNING SECTION (underneath uploading)
-        #*************************
-
-        # now chown the file to be whatever it is in the config file
-        # or else the server can't access the filesss
-        #
-        # don't chown anything if the string is an empty string
-        if uploadInfoDict["chown_to"]:
-            sshCmd = [x for x in binNamesDict["ssh_cmd"]]
-
-            sshCmd.append("{}".format(config["remote_url"]))
-
-            # like rsync's --rsh, the command we are running needs to be one 'entry' in the list so the shell doesn't mangle
-            # see http://stackoverflow.com/a/12496107/975046
-            # quotes and stuff
-            sshCmd.append("chown {} {}".format(
-                    uploadInfoDict["chown_to"], 
-                    pathlib.Path(uploadInfoDict["upload_to"], pathlib.Path(uploadInfoDict["filepath"]).name)) )
-
-            uploadLogger.debug("Running command (ssh/chown): {}".format(sshCmd))
+            uploadLogger.debug("Running command (rsync): '{}'".format(uploadCmd))
 
             try:
-                subprocess.check_call(sshCmd, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+                subprocess.check_call(uploadCmd)
             except subprocess.CalledProcessError as e:
-                uploadLogger.exception("Error calling ssh/chown command: '{}': returncode: {}, output: {}"
-                    .format(sshCmd, e.returncode, e.output))
+                uploadLogger.exception("Error calling rsync command: '{}': returncode: {}, output: {}"
+                    .format(uploadCmd, e.returncode, e.output))
                 sys.exit()
+
+
+            #*************************
+            # CHOWNING SECTION (underneath uploading)
+            #*************************
+
+            # now chown the file to be whatever it is in the config file
+            # or else the server can't access the filesss
+            #
+            # don't chown anything if the string is an empty string
+            if uploadInfoDict["chown_to"]:
+                sshCmd = [x for x in binNamesDict["ssh_cmd"]]
+
+                sshCmd.append("{}".format(config["remote_url"]))
+
+                # like rsync's --rsh, the command we are running needs to be one 'entry' in the list so the shell doesn't mangle
+                # see http://stackoverflow.com/a/12496107/975046
+                # quotes and stuff
+                sshCmd.append("chown {} {}".format(
+                        uploadInfoDict["chown_to"], 
+                        pathlib.Path(uploadInfoDict["upload_to"], pathlib.Path(uploadInfoDict["filepath"]).name)) )
+
+                uploadLogger.debug("Running command (ssh/chown): {}".format(sshCmd))
+
+                try:
+                    subprocess.check_call(sshCmd, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+                except subprocess.CalledProcessError as e:
+                    uploadLogger.exception("Error calling ssh/chown command: '{}': returncode: {}, output: {}"
+                        .format(sshCmd, e.returncode, e.output))
+                    sys.exit()
 
 
 
@@ -220,10 +238,14 @@ if __name__ == "__main__":
     # if we are being run as a real program
 
     parser = argparse.ArgumentParser(description="uploads files according to rules in a yaml config file", 
-    epilog="Copyright Aug 12, 2014 Mark Grandi")
+    epilog="Copyright Aug 12, 2014 - Mark Grandi")
 
     # optional arguments, if specified these are the input and output files, if not specified, it uses stdin and stdout
     parser.add_argument('configFile', type=isYamlTypeWithFiletype, help="the config file to use")
     parser.add_argument('--verbose', "-v", action="store_true", help="increase verbosity")
+
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--only-run-protoc", dest="onlyRunProtoc", action="store_true", help="only run protoc generation")
+    group.add_argument("--only-run-upload", dest="onlyRunUpload", action="store_true", help="only run uploads")
     
     uploadFiles(parser.parse_args())

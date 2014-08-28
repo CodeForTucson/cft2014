@@ -62,6 +62,11 @@ upload_config:
             include_path: "protoc"
             output_path: "sunspot_server/"
 
+        leveldb_server_messages.proto:
+            filepath: "protoc/leveldb_server_messages.proto"
+            include_path: "protoc"
+            output_path: "sunspot_server/"            
+
 
     # the files we upload and where they get uploaded to
     upload_list:
@@ -81,6 +86,11 @@ upload_config:
         sunspot_messages_pb2.py:
 
             filepath: "sunspot_server/sunspot_messages_pb2.py"
+            upload_to: "/var/www/sunspot"
+            chown_to: ""
+
+        leveldb_server_messages_pb2.py:
+            filepath: "sunspot_server/leveldb_server_messages_pb2.py"
             upload_to: "/var/www/sunspot"
             chown_to: ""
 
