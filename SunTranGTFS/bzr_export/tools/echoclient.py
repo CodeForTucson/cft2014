@@ -10,28 +10,36 @@ import asyncio
 
 import json
 import random
-class EchoClient(asyncio.Protocol):
-    message = 'This is the message. It will be echoed.'
+import arrow
 
-    def connection_made(self, transport):
+import sys
+sys.path.append("../project/sunspot_server")
 
-        self.transport = transport
-        msg = json.dumps({"type": "get", "key": "thisisakey2", "value": "thisisavalue"})
-        transport.write(msg.encode("utf-8"))
-        print('data sent: {}'.format(msg))
-
-    def data_received(self, data):
-        print('data received: {}'.format(data.decode()))
+from leveldb_server_messages_pb2 import LeveldbServerMessages
 
 
-        yield from asyncio.sleep(5)
-        msg = json.dumps({"type": "get", "key": "thisisakey2", "value": "thisisavalue"})
+# class EchoClient(asyncio.Protocol):
+#     message = 'This is the message. It will be echoed.'
 
-        self.transport.write(msg.encode("utf-8"))
+#     def connection_made(self, transport):
 
-    def connection_lost(self, exc):
-        print('server closed the connection')
-        asyncio.get_event_loop().stop()
+#         self.transport = transport
+#         msg = json.dumps({"type": "get", "key": "thisisakey2", "value": "thisisavalue"})
+#         transport.write(msg.encode("utf-8"))
+#         print('data sent: {}'.format(msg))
+
+#     def data_received(self, data):
+#         print('data received: {}'.format(data.decode()))
+
+
+#         yield from asyncio.sleep(5)
+#         msg = json.dumps({"type": "get", "key": "thisisakey2", "value": "thisisavalue"})
+
+#         self.transport.write(msg.encode("utf-8"))
+
+#     def connection_lost(self, exc):
+#         print('server closed the connection')
+#         asyncio.get_event_loop().stop()
 
 # loop = asyncio.get_event_loop()
 # coro = loop.create_connection(EchoClient, '127.0.0.1', 8888)
@@ -52,24 +60,42 @@ def repeat():
     while True:
         print("outer loop start")
 
+        protoObj = LeveldbServerMessages.ActualData()
+        protoObj.timestamp = str(arrow.now().timestamp)
+        protoObj.type = LeveldbServerMessages.ActualData.QUERY
+        query = protoObj.query
+
         result = random.choice([0,1])
 
         if result == 0 and len(listOfKeysCreated) != 0:
             print("get")
+            query.type = LeveldbServerMessages.ServerQuery.GET
+
+
             tmpkey = random.choice(listOfKeysCreated)
-            msg = json.dumps({"type": "get", "key": tmpkey, "value": ""})
+            query.key = tmpkey
+            #msg = json.dumps({"type": "get", "key": tmpkey, "value": ""})
             print("asking for value for key '{}'".format(tmpkey))
 
         else:
             print("set")
+            query.type = LeveldbServerMessages.ServerQuery.GET
+
+
+
             tmpkey = "".join(random.sample(alphabet, 10))
             listOfKeysCreated.append(tmpkey)
             value = "".join(random.sample(alphabet, 5))
-            print("creating key '{}' with value '{}'".format(tmpkey, value))
-            msg = json.dumps({"type": "set", "key": tmpkey, "value": value})
 
-        print("writing {}".format(msg))
-        writer.write(msg.encode("utf-8"))
+            query.key = tmpkey
+            query.value = value
+
+            print("creating key '{}' with value '{}'".format(tmpkey, value))
+            # msg = json.dumps({"type": "set", "key": tmpkey, "value": value})
+
+        protoObjBytes = protoObj.SerializeToString()
+        print("writing {}".format(protoObjBytes))
+        writer.write(protoObjBytes)
 
         
         tmpdata = yield from reader.read(8192)

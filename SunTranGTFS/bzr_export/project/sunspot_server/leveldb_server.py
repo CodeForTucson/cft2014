@@ -12,16 +12,40 @@ import asyncio
 import json
 import logging, logging.handlers
 import argparse, sys
+import random
 
 # third party libraries
 
 import yaml
 import leveldb
+import google.protobuf.message # for DecodeError 
 
 
 # project imports
 
 from constants import Constants
+from leveldb_server_messages_pb2 import LeveldbServerMessages
+
+def base36encode(number, alphabet='0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'):
+    """Converts an integer to a base36 string."""
+    if not isinstance(number, (int)):
+        raise TypeError('number must be an integer')
+
+    base36 = ''
+    sign = ''
+
+    if number < 0:
+        sign = '-'
+        number = -number
+
+    if 0 <= number < len(alphabet):
+        return sign + alphabet[number]
+
+    while number != 0:
+        number, i = divmod(number, len(alphabet))
+        base36 = alphabet[i] + base36
+
+    return sign + base36
 
 class LeveldbServer(asyncio.Protocol):
     ''' the server class itself (that subclasses Protocol)'''
@@ -35,16 +59,17 @@ class LeveldbServer(asyncio.Protocol):
         self.lg = logging.getLogger("LeveldbServer")
         self.lg.debug("LeveldbServer object created")
         self.name = "unnamed"
+        self.id = base36encode(random.sample(range(10000000), 1)[0])
 
     def __del__(self):
         ''' destructor'''
         self.lg.debug("LeveldbServer destroyed")
 
     def _peernameTupleToName(self, peernameTuple):
-        ''' turns a tuple like ('127.0.0.1', "57276") to a string name
+        ''' turns a string name using the port from a tuple like ('127.0.0.1', "57276") along with this connection's id
         '''
 
-        return peernameTuple[0].replace(".", "-") + ":" + str(peernameTuple[1])
+        return "<port:{:5d},id:{:5s}>".format(peernameTuple[1], self.id)
 
     def connection_made(self, transport):
         ''' called when a client makes a connection to this server
@@ -61,25 +86,21 @@ class LeveldbServer(asyncio.Protocol):
         ''' called when we recieve data from a client
         @param data - the data recieved (as bytes)'''
 
-        self.lg.debug('data received: {}'.format(data.decode()))
+        self.lg.debug('data received: "{}"'.format(data))
 
-        jData = json.loads(data.decode("utf-8"))
-        if jData["type"] == "get":
 
-            value = None
-            try:
-                value = LeveldbServer.db.Get(jData["key"].encode("utf-8")).decode("utf-8")
-            except:
-                self.transport.write( json.dumps({"return": None}).encode("utf-8"))
-                return
+        try:
+            protoObj = LeveldbServerMessages.ActualData.FromString(data)
+        except google.protobuf.message.DecodeError as e:
 
-            # everything is ok
-            self.transport.write( json.dumps({"return": value}).encode("utf-8"))
+            # if they sent a malformed message, close the connection
+            self.lg.error("Couldn't decode sent data, disconnecting this client. error: '{}'".format(e))
+            self.transport.write("You sent bad data. Goodbye\n".encode("utf-8"))
+            self.transport.close()
+            return
 
-        else:
-
-            LeveldbServer.db.Put(jData["key"].encode("utf-8"), jData["value"].encode("utf-8"))
-            self.transport.write("ok".encode("utf-8"))
+        self.lg.info("data: {}".format(str(protoObj)))
+        self.transport.write(b'ok')
 
     def eof_received(self):
 
@@ -142,10 +163,13 @@ def startLeveldbServer(args):
             backupCount=constantsObj.SERVERDATABASE_LOGGING_NUMBACKUPS,
             encoding="utf-8")
 
-    logging.basicConfig(level=constantsObj.SERVERDATABASE_LOGGING_LEVEL, 
+    logging.basicConfig(level="INFO", 
         format="%(asctime)s %(name)-35s %(levelname)-8s: %(message)s",
         handlers=[handler])
 
+    # we do this so if other libraries are using the logging module then
+    # we don't get spammed by their stuff
+    serverRootLogger.setLevel(constantsObj.SERVERDATABASE_LOGGING_LEVEL)
 
     serverRootLogger.info("loggers have been configured")
     serverRootLogger.info("\tusing handler: {}".format(handler))
@@ -168,7 +192,7 @@ def startLeveldbServer(args):
     except KeyboardInterrupt:
         print("exit")
     finally:
-        serverRootLogger("closing server and loop")
+        serverRootLogger.info("closing server and loop")
         server.close()
         loop.close()
 

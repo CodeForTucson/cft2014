@@ -1,0 +1,85 @@
+//
+// Protoc to define the queries and responses to the leveldb_server
+// to access the leveldb database from multiple processes
+// 
+// Mark Grandi - Aug 27, 2014
+//
+
+message LeveldbServerMessages {
+    // what the client sends to the server
+    
+
+    message ServerQuery {
+
+        // type of operation we want the server to do
+        enum ServerQueryType {
+
+            GET = 0;
+            SET = 1;
+            DELETE = 2;
+            START_RANGE_ITER = 3;
+
+        }
+
+        required ServerQueryType type = 1;
+        required string key = 2;
+        optional string value = 3;
+        optional string rangeiter_start = 4;
+        optional string rangeiter_end = 5;
+
+    }
+
+    message ServerResponse {
+        // what the server sends to the client
+
+        // types of responses we can give to the client
+        enum ServerResponseType {
+
+            GET_RETURNED_VALUE = 0;
+            GET_PRODUCED_KEYERROR = 1;
+            SET_SUCCESSFUL = 2;
+            RANGEITER_NEXTVALUE = 3;
+            RANGEITER_STOPITERATION = 4;
+            DELETE_SUCCESSFUL = 5; // this doesn't appear to raise an exception even if the key is not in the database
+        }
+
+        // query we sent to the server
+        required ServerQuery query_ran = 1;
+
+        // result of running the operation
+        required ServerResponseType type = 2;
+
+        // returned in GET and RANGEITER_NEXTVALUE scenarios
+        optional string returned_value = 3;
+
+
+
+    }
+
+    message ActualData {
+
+        // here we have an enum that tells whoever gets the message
+        // what type of message it is, and then based on that,
+        // one of the optional messages below will have data in it.
+        // This is basically "our union type", described here:
+        // https://developers.google.com/protocol-buffers/docs/techniques#union
+
+        enum ActualDataType {
+
+            QUERY = 0;
+            RESPONSE = 1;
+
+        }
+
+        required string timestamp = 1;
+        required ActualDataType type = 2;
+
+        optional ServerQuery query = 3;
+        optional ServerResponse response = 4;
+
+
+    }
+
+
+
+}
