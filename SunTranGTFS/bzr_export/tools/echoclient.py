@@ -70,7 +70,7 @@ def repeat():
         protoObj.type = LeveldbServerMessages.ActualData.QUERY
         query = protoObj.query
 
-        result = random.choice([0,0, 0,1, 1, 1, 1, 1,2,3])
+        result = random.choice([0,0, 0,1, 1, 1, 1, 1,2,3,4, 4, 4])
         skip = False
 
         if result == 0 and len(listOfKeysCreated) != 0:
@@ -120,7 +120,7 @@ def repeat():
                 print("skipping..")
                 skip = True
 
-        else:
+        elif result == 3:
             if len(listOfKeysCreated) != 0:
                 print("*** DELETE ALL IN RANGE ***")
 
@@ -136,12 +136,26 @@ def repeat():
                     if iterKey.startswith(query.key):
                         print("\tshould delete key: {}".format(listOfKeysCreated.pop(idx)))
 
+            else:
+                print("skipping..")
+                skip = True
+        else:
+            if len(listOfKeysCreated) != 0:
+                print("*** RETURN ALL IN RANGE ***")
+
+
+                query.type = LeveldbServerMessages.ServerQuery.RETURN_ATONCE_RANGE_ITER
+
+                tmpstr = random.choice(listOfKeysCreated)
+
+                query.key = tmpstr[:2]
+
+                print("returning all keys with prefix: {}".format(query.key))                
 
 
             else:
                 print("skipping..")
                 skip = True
-
 
         if protoObj.IsInitialized() and not skip:
             skip = False

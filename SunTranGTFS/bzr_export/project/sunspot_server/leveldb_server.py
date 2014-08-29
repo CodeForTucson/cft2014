@@ -125,6 +125,9 @@ class LeveldbServer(asyncio.Protocol):
         # see what type it is
         # TODO ensure that its a query and not a response
         tmpQuery = protoObj.query
+        # wow this is hackish LOL
+        friendlyName = LeveldbServerMessages.ServerQuery.DESCRIPTOR.enum_types_by_name["ServerQueryType"].values_by_number[tmpQuery.type].name
+        self.lg.info("Processing query type: {}".format(friendlyName))
 
         # the protobuf object we will be writing at the end
         returnProtoObj = LeveldbServerMessages.ActualData()
@@ -195,6 +198,8 @@ class LeveldbServer(asyncio.Protocol):
             # we don't delete more then we want to (since if you start a RangeIter at a prefix, 
             # it will keep going if no endKey is given...)
 
+            # TODO make this and RETURN ATONCE RANGE ITER use the same code for the generator stuff...
+
             self.lg.debug("in DELETE_ALL_IN_RANGE section")
             
             # both are optional, TODO check this to make sure both are there!
@@ -230,7 +235,44 @@ class LeveldbServer(asyncio.Protocol):
 
 
         elif tmpQuery.type == LeveldbServerMessages.ServerQuery.RETURN_ATONCE_RANGE_ITER:
-            pass
+            
+            # i don't think this operation can fail... maybe i'm wrong
+
+            self.lg.debug("in RETURN_ATONCE_RANGE_ITER section")
+
+            # both are optional, TODO check this to make sure both are there!
+            startKey = tmpQuery.key
+            endKey = None if not tmpQuery.HasField("rangeiter_end") else tmpQuery.rangeiter_end
+
+            self.lg.debug("\tStart,end keys are '{}' / '{}'".format(startKey, endKey))
+
+            if endKey != None:
+                theGen = LeveldbServer.db.RangeIter(startKey.encode("utf-8"), endKey.encode("utf-8"))
+            else:
+                theGen = LeveldbServer.db.RangeIter(startKey.encode("utf-8"))
+
+            toReturnList = list()
+            self.lg.debug("starting RangeIter generator loop")
+
+            # we only want the 
+            for iterEntry in theGen:
+
+                # here, if we are only given a start key, break out of the loop when 
+                # the keys no longer startwith() the start key (or prefix)
+                # if we have an end key we don't worry about it because it will end on its own.
+                if endKey == None and not iterEntry[0].decode("utf-8").startswith(startKey):
+                    self.lg.debug("\t\tbreaking RangeIter generator loop because endKey is None and the key '{}' does not start with '{}'"
+                        .format(iterEntry[0], startKey))
+                    break
+                
+                self.lg.debug("\tGot key/value: '{}' / '{}'".format(iterEntry[0].decode("utf-8"), iterEntry[1].decode("utf-8")))
+
+                # mutliple_returned_values is a repeated KeyValue field, which is basically just a dictionary.
+                tmpKeyVal = returnProtoObj.response.multiple_returned_values.add() # creates a new KeyValue message for us to modify
+                tmpKeyVal.key = iterEntry[0].decode("utf-8")
+                tmpKeyVal.value = iterEntry[1].decode("utf-8")
+
+            returnProtoObj.response.type = LeveldbServerMessages.ServerResponse.RANGEITER_ATONCE_RETURNED
 
         else:
 
@@ -319,6 +361,10 @@ def startLeveldbServer(args):
 
     serverRootLogger.info("loggers have been configured")
     serverRootLogger.info("\tusing handler: {}".format(handler))
+
+    # shut the asyncio logger up
+    aLg = logging.getLogger("asyncio")
+    aLg.setLevel("WARNING")
 
 
     loop = asyncio.get_event_loop()

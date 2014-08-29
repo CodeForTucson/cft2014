@@ -31,6 +31,12 @@ message LeveldbServerMessages {
 
     }
 
+    message KeyValue {
+
+        required string key = 1;
+        required string value = 2;
+    }
+
     message ServerResponse {
         // what the server sends to the client
 
@@ -52,11 +58,11 @@ message LeveldbServerMessages {
         // result of running the operation
         required ServerResponseType type = 2;
 
-        // returned in GET and RANGEITER_NEXTVALUE scenarios
+        // returned in GET 
         optional string returned_value = 3;
 
-        // returned in RANGEITER_ATONCE_RETURNED
-        repeated string multiple_returned_values = 4;
+        // returned in RANGEITER_ATONCE_RETURNED and RANGEITER_NEXTVALUE
+        repeated KeyValue multiple_returned_values = 4;
 
 
 
