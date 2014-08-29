@@ -188,8 +188,47 @@ class LeveldbServer(asyncio.Protocol):
 
         elif tmpQuery.type == LeveldbServerMessages.ServerQuery.START_RANGE_ITER:
             pass
+
         elif tmpQuery.type == LeveldbServerMessages.ServerQuery.DELETE_ALL_IN_RANGE:
-            pass
+
+            # this operation, like delete, also can't really fail, but we need to be careful
+            # we don't delete more then we want to (since if you start a RangeIter at a prefix, 
+            # it will keep going if no endKey is given...)
+
+            self.lg.debug("in DELETE_ALL_IN_RANGE section")
+            
+            # both are optional, TODO check this to make sure both are there!
+            startKey = tmpQuery.key
+            endKey = None if not tmpQuery.HasField("rangeiter_end") else tmpQuery.rangeiter_end
+
+            self.lg.debug("\tStart,end keys are '{}' / '{}'".format(startKey, endKey))
+
+            if endKey != None:
+                theGen = LeveldbServer.db.RangeIter(startKey.encode("utf-8"), endKey.encode("utf-8"))
+            else:
+                theGen = LeveldbServer.db.RangeIter(startKey.encode("utf-8"))
+
+            toDelList = list()
+            self.lg.debug("\tstarting RangeIter generator loop")
+            for iterResult in theGen:
+
+                # here, if we are only given a start key, break out of the loop when 
+                # the keys no longer startwith() the start key (or prefix)
+                # if we have an end key we don't worry about it because it will end on its own.
+                if endKey == None and not iterResult[0].decode("utf-8").startswith(startKey):
+                    self.lg.debug("\t\tbreaking RangeIter generator loop because endKey is None and the key '{}' does not start with '{}'"
+                        .format(iterResult[0], startKey))
+                    break
+
+                toDelList.append(iterResult[0])
+
+            for iterEntry in toDelList:
+                self.lg.debug("\tDeleting key {}".format(iterEntry))
+                self.db.Delete(iterEntry)
+
+            returnProtoObj.response.type = LeveldbServerMessages.ServerResponse.DELETE_SUCCESSFUL
+
+
         elif tmpQuery.type == LeveldbServerMessages.ServerQuery.RETURN_ATONCE_RANGE_ITER:
             pass
 

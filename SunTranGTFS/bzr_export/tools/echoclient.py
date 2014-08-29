@@ -57,19 +57,24 @@ def repeat():
     listOfKeysCreated = list()
 
     print("starting")
+
+
+    # these two things are used to make it so that delete all in range deletes more then one thing
+    tmpPrefix = "".join(random.sample(alphabet, 2))
+    prefixCounter = 0
     while True:
-        print("outer loop start")
+        # print("outer loop start")
 
         protoObj = LeveldbServerMessages.ActualData()
         protoObj.timestamp = arrow.now().timestamp # int64
         protoObj.type = LeveldbServerMessages.ActualData.QUERY
         query = protoObj.query
 
-        result = random.choice([0,1,2])
+        result = random.choice([0,0, 0,1, 1, 1, 1, 1,2,3])
         skip = False
 
         if result == 0 and len(listOfKeysCreated) != 0:
-            print("get")
+            print("*** GET ***")
             query.type = LeveldbServerMessages.ServerQuery.GET
 
 
@@ -79,25 +84,31 @@ def repeat():
             print("asking for value for key '{}'".format(tmpkey))
 
         elif result == 1:
-            print("set")
+            print("*** SET ***")
             query.type = LeveldbServerMessages.ServerQuery.SET
 
 
 
-            tmpkey = "".join(random.sample(alphabet, 10))
+
+            tmpkey = tmpPrefix + "".join(random.sample(alphabet, 10))
             listOfKeysCreated.append(tmpkey)
             value = "".join(random.sample(alphabet, 5))
 
-            query.key = tmpkey
+            query.key =  tmpkey
             query.value = value
+
+            prefixCounter += 1
+            if prefixCounter >= 5:
+                tmpPrefix = "".join(random.sample(alphabet, 2))
+                prefixCounter = 0
 
             print("creating key '{}' with value '{}'".format(tmpkey, value))
             # msg = json.dumps({"type": "set", "key": tmpkey, "value": value})
 
-        else:
+        elif result == 2:
 
             if len(listOfKeysCreated) != 0:
-                print("delete")
+                print("*** DELETE ***")
 
                 query.type = LeveldbServerMessages.ServerQuery.DELETE
 
@@ -108,6 +119,29 @@ def repeat():
             else:
                 print("skipping..")
                 skip = True
+
+        else:
+            if len(listOfKeysCreated) != 0:
+                print("*** DELETE ALL IN RANGE ***")
+
+                query.type = LeveldbServerMessages.ServerQuery.DELETE_ALL_IN_RANGE
+
+                thechoice = random.randint(0, len(listOfKeysCreated) - 1)
+                tmpkey = listOfKeysCreated.pop(thechoice)
+
+                query.key = tmpkey[:2]
+                print("deleting keys with prefix {}".format(query.key))
+
+                for idx, iterKey in enumerate(listOfKeysCreated):
+                    if iterKey.startswith(query.key):
+                        print("\tshould delete key: {}".format(listOfKeysCreated.pop(idx)))
+
+
+
+            else:
+                print("skipping..")
+                skip = True
+
 
         if protoObj.IsInitialized() and not skip:
             skip = False
@@ -131,7 +165,7 @@ def repeat():
 
             print("sleeping")
             print("***********")
-            yield from asyncio.sleep(5)
+            yield from asyncio.sleep(3)
         else:
             print("protobuf obj was not initalized")
 
