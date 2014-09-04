@@ -1,6 +1,8 @@
 import leveldb
-from enum import Enum
 import logging
+import socket
+from constants import Constants
+from leveldb_server_messages_pb2 import LeveldbServerMessages
 
 class ServerDatabaseEnums:
     ''' this class will hold various full keys or 'prefixes' for leveldb keys
@@ -22,21 +24,84 @@ class ServerDatabase:
     You should pass in various ServerDatabaseEnums class values to the methods in this class, to avoid magic numbers/values! 
     '''
 
-    def _log(self, msg):
 
-        self.lg.debug(msg)
 
     def __init__(self, databasePath, logger):
         '''constructor
         @param databasePath - the path to the leveldb database
         @param logger - a logger object'''
 
-        self.db = leveldb.LevelDB(databasePath)
-        self.dbFilePath = databasePath
+        # self.db = leveldb.LevelDB(databasePath)
+        # self.dbFilePath = databasePath
 
         self.lg = logger
 
-        self._log("Opening database at {}".format(databasePath))
+        #self._log("Opening database at {}".format(databasePath))
+
+    def _socketSend(self, msg):
+        ''' method to handle sending / writing data to the socket that is connected to the 'leveldb_server'.
+        Since a socket can not send all of the data that you tell it to, we need to keep trying until you
+        have sent all the data or get back '0' which is an error. Taken from https://docs.python.org/3/howto/sockets.html
+        We prefix the 'length' of the message that we are sending to the actual bytes that we write to the socket so the 
+        server knows how much to read, in case it also doesn't read the entire message at once.
+
+        @param msg - the bytes to send'''
+
+        totalsent = 0
+
+        # appends a 2 byte 'size prefix' to the data we send to the client
+        actualMsg = len(msg).to_bytes(2, "big") + msg 
+        msgLen = len(msg)
+        while totalsent < msgLen:
+            sent = self.sock.send(msg[totalsent:])
+            if sent == 0:
+                self._log("Got 0 bytes on socket.send(), connection is broken!", severity="ERROR")
+                raise RuntimeError("socket connection broken")
+            totalsent = totalsent + sent
+
+
+    def _socketRecvWithSizePrefix(self):
+        ''' helper method that helps reading data that is prefixed with the 2 byte size prefix.
+        It basically calls _socketRecv(2), to get the size prefix, and then _socketRecv(SIZE_PREFIX) to get the 
+        rest of the data and then returns it'''
+
+        # get the size
+        sizePrefix = int.from_bytes(self._socketRecv(2), "big")
+
+        # then read 'SIZE' bytes and return it
+        return self._socketRecv(sizePrefix)
+
+    def _socketRecv(self, msgLen):
+        ''' method to handle reading / receiving data from the socket that is connected to the 'leveldb_server'.
+        Since a socket can read only part of the data that was sent, we need to keep trying until we have read
+        all of the data that was sent. We handle the 'length' by having 2 bytes that are prefixed to all of the messages
+        that the leveldb_server sends us, which is the remaining length of the message, so we know when we have got it all.
+        Taken from https://docs.python.org/3/howto/sockets.html
+
+        @param msgLen - the length of the message that we are receiving
+        @return the bytes that we received''' 
+        chunks = []
+        bytes_recd = 0
+        while bytes_recd < msgLen:
+            print("\treading, msgLen is {}".format(msgLen))
+            chunk = self.socket.recv(min(msgLen - bytes_recd, 2048))
+            if chunk == b'':
+                self._log("Got 0 bytes on socket.recv(), connection is broken!", severity="ERROR")
+                raise RuntimeError("socket connection broken")
+            print("\t\tgot chunk: {}".format(chunk))
+            chunks.append(chunk)
+            bytes_recd = bytes_recd + len(chunk)
+
+        print("\tdone reading")
+        return b''.join(chunks)
+
+    def _log(self, msg, severity=logging.DEBUG):
+        ''' logs a message under the DEBUG level, overridden by subclasses
+        @param msg - the message to log
+        @param severity - what severity to log this message under, defaults to DEBUG
+        '''
+
+        self.lg.log(severity, msg)
 
 
 
@@ -159,12 +224,15 @@ class CherrypyServerDatabase (ServerDatabase):
     something different in order to log'''
 
 
-    def _log(self, msg):
+    def _log(self, msg, severity=logging.DEBUG):
         ''' overriding the '_log' method, which uses the cherrypy LogManager, which is a wrapper
         around a logging.Logger object, so we always log using error(), but we can specify a custom 
-        prefix and severity'''
-        
-        self.lg.error(msg, "ServerDatabase", severity=logging.DEBUG)
+        prefix and severity
+
+        @param msg - the message to log
+        @param severity - what severity to log this message under, defaults to DEBUG'''
+
+        self.lg.error(msg, "ServerDatabase", severity=severity)
 
 
 
