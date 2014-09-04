@@ -62,6 +62,12 @@ class LeveldbServer(asyncio.Protocol):
         self.name = "unnamed"
         self.id = base36encode(random.sample(range(10000000), 1)[0])
 
+        # used in holding the data until we get the entire thing
+        self.chunks = list()
+        self.incomingMessageLength = 0
+        self.haveIncompleteMessage = False
+        self.dataReadSoFar = 0
+
     def __del__(self):
         ''' destructor'''
         self.lg.debug("LeveldbServer destroyed")
@@ -70,7 +76,7 @@ class LeveldbServer(asyncio.Protocol):
         ''' turns a string name using the port from a tuple like ('127.0.0.1', "57276") along with this connection's id
         '''
 
-        return "<port:{:5d},id:{:5s}>".format(peernameTuple[1], self.id)
+        return "<p:{:5d},id:{:5s}>".format(peernameTuple[1], self.id)
 
     def _returnErrorProtobuf(self, errCode, errMsg):
         ''' helper method that writes a error protobuf message to the transport and closes the
@@ -83,12 +89,32 @@ class LeveldbServer(asyncio.Protocol):
         errProto.error.error_code = errCode
         errProto.error.error_message = errMsg
 
+        self.lg.error("closing transport due to error: {}, {}"
+            .format(self.protobufEnumToStr(LeveldbServerMessages.Error, "ErrorType", errCode), errMsg))
         self.transport.write(errProto.SerializeToString())
         self.transport.close() 
 
 
+    def protobufEnumToStr(self, reflectionObj, enumTypeName, enumValue):
+        ''' helper method to take a protobuf enum value and turn it into a human readable name
+
+        @param reflectionObj - the 'class' that contains the enum value
+        @param enumTypeName - the 'name' of the Enum's type (as you typed it in the proto file, like enum Something {...}, the 
+            name is 'Something')
+        @param enumValue - the actual enum value (an int)
+
+        @return a string'''
 
 
+        #LeveldbServerMessages.ServerQuery.DESCRIPTOR.enum_types_by_name["ServerQueryType"].values_by_number[tmpQuery.type].name
+
+        try:
+            return "<ProtoEnum: " + enumTypeName + "." + reflectionObj.DESCRIPTOR.enum_types_by_name[enumTypeName].values_by_number[enumValue].name + ">"
+        except Exception as e:
+            self.lg.error("protobufEnumToStr() encountered an exception, returning default string ({})".format(e))
+
+        # default string if an exception happens
+        return "<UNKNOWN>"
 
     def connection_made(self, transport):
         ''' called when a client makes a connection to this server
@@ -103,14 +129,97 @@ class LeveldbServer(asyncio.Protocol):
 
     def data_received(self, data):
         ''' called when we recieve data from a client
-        @param data - the data recieved (as bytes)'''
+        Note that this might not be all the data that the client has sent us, so we need to check the size
+        (a 2 byte prefix in the data we get) so we know we have the entire protobuf message
 
-        self.lg.debug('data received: "{}"'.format(data))
+        @param data - a non-empty bytes object containing the incoming data, might not be complete'''
 
+        self.lg.debug("data_received called with: '{}', len: '{}'".format(data, len(data)))
+
+        # here we are assuming that we are at least getting 2 bytes, for the size of the message
+        if not len(data) >= 2:
+            self.lg.error("got less then 2 bytes, which means we can't figure out the size of the rest of the message!")
+            return self._returnErrorProtobuf(LeveldbServerMessages.Error.SERVER_ERROR, "didn't get at least 2 bytes in initial " + 
+                "data recieved, so unable determine the of incoming message")
+
+        sizeOfData = 0 # size of the data , minus the 2 byte size prefix
+
+        ###################
+        # see if we are in the middle of reading an incomplete message
+        # and set variables
+        ###################
+        if self.haveIncompleteMessage:
+
+            # in the middle of an incomplete message, so we already have some data
+
+            sizeOfData = self.incomingMessageLength
+            
+            self.dataReadSoFar += len(data)
+
+            self.lg.debug("\tIncompleteMessage, sizeOfData: '{}', chunks: '{}', dataReadSoFar: '{}'".format(sizeOfData, self.chunks, self.dataReadSoFar))
+            self.chunks.append(data)
+
+        else:
+
+            # not in middle of incomplete message, this is a new one, we don't have any existing data
+
+            sizeOfData = int.from_bytes(data[:2], "big")
+            self.dataReadSoFar += len(data[2:]) # data minus the size prefix
+
+            self.lg.debug("\tNewMessage, sizeOfData: '{}' chunks: '{}', dataReadSoFar: '{}'".format(sizeOfData, self.chunks, self.dataReadSoFar))
+            self.chunks.append(data[2:]) # data minus the size prefix
+            self.lg.debug("\t\tadding chunk: '{}'".format(data))
+
+
+
+
+        ###################
+        # deal with the data we recieved, figure out
+        # if we have retrieved all of it or if we have to wait for another read
+        ###################
+        if self.dataReadSoFar >= sizeOfData:
+
+            # got all the data, call the actual method to process the complete protobuf message
+            
+            resultData = b''.join(self.chunks)
+
+            self.lg.debug("\thave all of the data, calling complete_data_received with '{}'".format(resultData))
+
+            # reset variables
+            self.haveIncompleteMessage = False
+            self.chunks = list()
+            self.incomingMessageLength = 0
+            self.dataReadSoFar = 0
+
+            # call the 'real' complete_data_recieved() method with the data , with the 'size' bytes stripped off
+            return self.complete_data_received(resultData)
+
+        else:
+
+            # we didn't get all the data, so we have to do multiple reads, save our state for the next read
+
+            self.haveIncompleteMessage = True
+            self.incomingMessageLength = sizeOfData
+
+            self.lg.debug("\tdon't have all of the data, only have {}/{} bytes (not including size prefix)".format(self.dataReadSoFar, sizeOfData))
+
+        self.lg.debug("waiting for another data_recieved call...")
+
+
+
+
+    def complete_data_received(self, data):
+        ''' This method gets called by data_recieved, when we are certain that we have read the entire message
+        from the client, since depending on the protocol the data we get back might be chunked / not all sent at once,
+        so the client appends a 2 bytes 'size' to the data, so we know when we have recieved all of the data.
+
+        @param data - the data (complete) that we received as bytes
+        '''
         # TODO: write a method, 'ensureMessageHas' that takes a string that is a field name, and 
         # makes sure a protobuf message has those fields by calling HasField(), and if doesnt then
         # we call _returnErrorProtobuf cause its an invalid request
 
+        self.lg.debug("complete_data_received called with: '{}'".format(data))
 
         try:
             protoObj = LeveldbServerMessages.ActualData.FromString(data)
@@ -125,8 +234,7 @@ class LeveldbServer(asyncio.Protocol):
         # see what type it is
         # TODO ensure that its a query and not a response
         tmpQuery = protoObj.query
-        # wow this is hackish LOL
-        friendlyName = LeveldbServerMessages.ServerQuery.DESCRIPTOR.enum_types_by_name["ServerQueryType"].values_by_number[tmpQuery.type].name
+        friendlyName = self.protobufEnumToStr(LeveldbServerMessages.ServerQuery, "ServerQueryType", tmpQuery.type)
         self.lg.info("Processing query type: {}".format(friendlyName))
 
         # the protobuf object we will be writing at the end
@@ -286,6 +394,10 @@ class LeveldbServer(asyncio.Protocol):
 
         # return the result
         returnBytes = returnProtoObj.SerializeToString()
+
+        # here we have to specify how many bytes are in the message so the reciver knows when they have
+        # read the entire message
+        returnBytes = len(returnBytes).to_bytes(2, "big") + returnBytes 
         self.lg.debug("writing to transport: {}".format(returnBytes))
         self.transport.write(returnBytes)
 
