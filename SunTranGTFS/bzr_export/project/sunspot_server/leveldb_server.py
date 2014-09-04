@@ -190,6 +190,7 @@ class LeveldbServer(asyncio.Protocol):
 
 
         elif tmpQuery.type == LeveldbServerMessages.ServerQuery.START_RANGE_ITER:
+            self.lg.error("NOT IMPLEMENTED: START_RANGE_ITER")
             pass
 
         elif tmpQuery.type == LeveldbServerMessages.ServerQuery.DELETE_ALL_IN_RANGE:

@@ -160,6 +160,10 @@ class CherrypyServerDatabase (ServerDatabase):
 
 
     def _log(self, msg):
+        ''' overriding the '_log' method, which uses the cherrypy LogManager, which is a wrapper
+        around a logging.Logger object, so we always log using error(), but we can specify a custom 
+        prefix and severity'''
+        
         self.lg.error(msg, "ServerDatabase", severity=logging.DEBUG)
 
 
