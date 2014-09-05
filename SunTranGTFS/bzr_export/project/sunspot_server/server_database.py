@@ -1,7 +1,7 @@
 import leveldb
 import logging
 import socket
-from constants import Constants
+import arrow
 from leveldb_server_messages_pb2 import LeveldbServerMessages
 
 class ServerDatabaseEnums:
@@ -26,9 +26,10 @@ class ServerDatabase:
 
 
 
-    def __init__(self, databasePath, logger):
+    def __init__(self, ipAddr, port, logger):
         '''constructor
-        @param databasePath - the path to the leveldb database
+        @param ipAddr - the ip address as a string of the leveldb_server that we want to connect to
+        @param port - the port as a string of the leveldb_server that we want to connect to
         @param logger - a logger object'''
 
         # self.db = leveldb.LevelDB(databasePath)
@@ -37,6 +38,8 @@ class ServerDatabase:
         self.lg = logger
 
         #self._log("Opening database at {}".format(databasePath))
+
+        self.socket = socket.create_connection((ipAddr, port))
 
     def _socketSend(self, msg):
         ''' method to handle sending / writing data to the socket that is connected to the 'leveldb_server'.
@@ -51,9 +54,9 @@ class ServerDatabase:
 
         # appends a 2 byte 'size prefix' to the data we send to the client
         actualMsg = len(msg).to_bytes(2, "big") + msg 
-        msgLen = len(msg)
+        msgLen = len(actualMsg)
         while totalsent < msgLen:
-            sent = self.sock.send(msg[totalsent:])
+            sent = self.socket.send(actualMsg[totalsent:])
             if sent == 0:
                 self._log("Got 0 bytes on socket.send(), connection is broken!", severity="ERROR")
                 raise RuntimeError("socket connection broken")
@@ -103,7 +106,34 @@ class ServerDatabase:
 
         self.lg.log(severity, msg)
 
+    def _createProtoQuery(self):
+        ''' helper method that creates the LeveldbServerMessages.ActualData object for us, sets the timestamp
+        and the type, and then returns it for us
 
+        this is for a ServerQuery
+
+        @return a ActualData protobuf object'''
+
+        protoObj = LeveldbServerMessages.ActualData()
+        protoObj.timestamp = arrow.now().timestamp # int64
+        protoObj.type = LeveldbServerMessages.ActualData.QUERY
+        
+        return protoObj
+
+    def _isProtoComplete(self, protoObj):
+        ''' helper method that sees if a protobuf object is complete
+        and we can send it. TODO this should probably be a decorator...
+
+        @param protoObj - the protobuf object to check
+
+        @return if the protoObj is not complete, then we raise an exception, if not, we return
+            the protoObj serialized as bytes'''
+
+        if protoObj.IsInitialized():
+            return protoObj.SerializeToString()
+        else:
+            self._log("Protobuf object is not complete!", severity=logging.ERROR)
+            raise ValueError("protobuf object is not complete!")
 
 
     def __getitem__(self, key):
@@ -114,7 +144,43 @@ class ServerDatabase:
 
         self._log("retrieving value from key '{}'".format(key))
 
-        return self.db.Get(key.encode("utf-8")).decode("utf-8")
+        #return self.db.Get(key.encode("utf-8")).decode("utf-8")
+        
+        protoObj = self._createProtoQuery()
+        query = protoObj.query
+
+        # set the key, encoded into bytes
+        query.key = key.encode("utf-8")
+        # set the operation we want the server to do
+        query.type = LeveldbServerMessages.ServerQuery.GET
+
+        # send it
+        self._socketSend(self._isProtoComplete(protoObj))
+        self._log("Sending proto message: {}".format(str(protoObj)))
+
+        # wait for response and return it, we get back bytes of a protobuf object
+        resultBytes = self._socketRecvWithSizePrefix()
+        self._log("got back bytes: {}".format(resultBytes))
+
+        # figure out if the server sent us a KeyError or a real value
+        protoResult = LeveldbServerMessages.ActualData.FromString(resultBytes)
+        self._log("recieved protoMessage: {}".format(str(protoResult)))
+        resp = protoResult.response
+
+        if resp.type == LeveldbServerMessages.ServerResponse.GET_PRODUCED_KEYERROR:
+            # key error happened, raise the exception as normal
+            self._log("Got keyerror from server!", severity=logging.ERROR)
+            raise KeyError(resp.query_ran.key.decode("utf-8"))
+
+        elif resp.type == LeveldbServerMessages.ServerResponse.GET_RETURNED_VALUE:
+            # return the value
+            self._log("got normal value back from server, {}".format(resp.returned_value))
+            return resp.returned_value.decode("utf-8")
+        else:
+            self._log("Didn't get an expected ServerResponse type! got: {}".format())
+
+
+
 
     def __setitem__(self, key, value):
         '''implementation of obj[item] = something
@@ -145,9 +211,15 @@ class ServerDatabase:
         # closes the database normally. Even in c++ you don't really close the database, you just call del *db
         # and it closes automatically
 
-        del self.db
+        try:
+            self.socket.shutdown(socket.SHUT_RDWR) # tell server we are not listening or sending any more data
+            self.socket.close()
 
-        self._log("ServerDatabase.__del__() called, closing database at '{}'".format(self.dbFilePath))
+        except Exception as e:
+            self._log("Error in deconstructor: {}".format(e))
+            pass
+
+        self._log("ServerDatabase.__del__() called")
 
 
     def setWithPrefix(self, key, formatEntries, value):
