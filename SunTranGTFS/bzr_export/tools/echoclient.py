@@ -79,7 +79,7 @@ def repeat():
 
 
             tmpkey = random.choice(listOfKeysCreated)
-            query.key = tmpkey
+            query.key = tmpkey.encode("utf-8")
             #msg = json.dumps({"type": "get", "key": tmpkey, "value": ""})
             print("asking for value for key '{}'".format(tmpkey))
 
@@ -94,8 +94,8 @@ def repeat():
             listOfKeysCreated.append(tmpkey)
             value = "".join(random.sample(alphabet, 5))
 
-            query.key =  tmpkey
-            query.value = value
+            query.key =  tmpkey.encode("utf-8")
+            query.value = value.encode("utf-8")
 
             prefixCounter += 1
             if prefixCounter >= 5:
@@ -113,7 +113,7 @@ def repeat():
                 query.type = LeveldbServerMessages.ServerQuery.DELETE
 
                 thechoice = random.randint(0, len(listOfKeysCreated) - 1)
-                query.key = listOfKeysCreated.pop(thechoice)
+                query.key = listOfKeysCreated.pop(thechoice).encode("utf-8")
 
                 print("Deleting key '{}'".format(query.key))
             else:
@@ -129,11 +129,11 @@ def repeat():
                 thechoice = random.randint(0, len(listOfKeysCreated) - 1)
                 tmpkey = listOfKeysCreated.pop(thechoice)
 
-                query.key = tmpkey[:2]
+                query.key = tmpkey[:2].encode("utf-8")
                 print("deleting keys with prefix {}".format(query.key))
 
                 for idx, iterKey in enumerate(listOfKeysCreated):
-                    if iterKey.startswith(query.key):
+                    if iterKey.startswith(tmpkey[:2]):
                         print("\tshould delete key: {}".format(listOfKeysCreated.pop(idx)))
 
             else:
@@ -148,7 +148,7 @@ def repeat():
 
                 tmpstr = random.choice(listOfKeysCreated)
 
-                query.key = tmpstr[:2]
+                query.key = tmpstr[:2].encode("utf-8")
 
                 print("returning all keys with prefix: {}".format(query.key))                
 
@@ -160,8 +160,12 @@ def repeat():
         if protoObj.IsInitialized() and not skip:
             skip = False
             protoObjBytes = protoObj.SerializeToString()
-            print("writing {}, {}".format(protoObjBytes, protoObj))
-            writer.write(protoObjBytes)
+
+            # add the length prefix
+
+            lenPrefix = len(protoObjBytes).to_bytes(2, "big")
+            print("writing {}, {}".format(lenPrefix + protoObjBytes, protoObj))
+            writer.write(lenPrefix + protoObjBytes)
 
             
             tmpdata = yield from reader.read(8192)

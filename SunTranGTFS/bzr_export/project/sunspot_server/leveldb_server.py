@@ -253,7 +253,9 @@ class LeveldbServer(asyncio.Protocol):
             self.lg.debug("\tattempting Get() with key: {}".format(keyToLookUp))
             try:
                 # encode the string to look it up, we get back bytes, so decode that to turn it back into a string
-                returnProtoObj.response.returned_value = LeveldbServer.db.Get(keyToLookUp.encode("utf-8")).decode("utf-8")
+
+                # the protobuf-py3 library freaks out and wants bytes instead of bytearray
+                returnProtoObj.response.returned_value = bytes(LeveldbServer.db.Get(keyToLookUp))  
                 returnProtoObj.response.type = LeveldbServerMessages.ServerResponse.GET_RETURNED_VALUE
                 self.lg.debug("\tGet successful, got {}".format(returnProtoObj.response.returned_value))
 
@@ -275,7 +277,7 @@ class LeveldbServer(asyncio.Protocol):
             valueToUse = tmpQuery.value
             self.lg.debug("\tAttempting Set() with key: {}, value: {}".format(keyToUse, valueToUse))
 
-            LeveldbServer.db.Put(keyToUse.encode("utf-8"), valueToUse.encode("utf-8"))
+            LeveldbServer.db.Put(keyToUse, valueToUse)
             self.lg.debug("\tSet successful")
 
             returnProtoObj.response.type = LeveldbServerMessages.ServerResponse.SET_SUCCESSFUL
@@ -290,7 +292,7 @@ class LeveldbServer(asyncio.Protocol):
 
             keyToUse = tmpQuery.key
             self.lg.debug("\tAttempting Delete() with key: {}".format(keyToUse))
-            LeveldbServer.db.Delete(keyToUse.encode("utf-8"))
+            LeveldbServer.db.Delete(keyToUse)
             self.lg.debug("\tDelete successful")
 
             returnProtoObj.response.type = LeveldbServerMessages.ServerResponse.DELETE_SUCCESSFUL
@@ -318,9 +320,9 @@ class LeveldbServer(asyncio.Protocol):
             self.lg.debug("\tStart,end keys are '{}' / '{}'".format(startKey, endKey))
 
             if endKey != None:
-                theGen = LeveldbServer.db.RangeIter(startKey.encode("utf-8"), endKey.encode("utf-8"))
+                theGen = LeveldbServer.db.RangeIter(startKey, endKey)
             else:
-                theGen = LeveldbServer.db.RangeIter(startKey.encode("utf-8"))
+                theGen = LeveldbServer.db.RangeIter(startKey)
 
             toDelList = list()
             self.lg.debug("\tstarting RangeIter generator loop")
@@ -329,7 +331,7 @@ class LeveldbServer(asyncio.Protocol):
                 # here, if we are only given a start key, break out of the loop when 
                 # the keys no longer startwith() the start key (or prefix)
                 # if we have an end key we don't worry about it because it will end on its own.
-                if endKey == None and not iterResult[0].decode("utf-8").startswith(startKey):
+                if endKey == None and not iterResult[0].startswith(startKey):
                     self.lg.debug("\t\tbreaking RangeIter generator loop because endKey is None and the key '{}' does not start with '{}'"
                         .format(iterResult[0], startKey))
                     break
@@ -349,6 +351,8 @@ class LeveldbServer(asyncio.Protocol):
 
             self.lg.debug("in RETURN_ATONCE_RANGE_ITER section")
 
+            # TODO make this and DELETE_ALL_IN_RANGE use the same code for the generator stuff...
+
             # both are optional, TODO check this to make sure both are there!
             startKey = tmpQuery.key
             endKey = None if not tmpQuery.HasField("rangeiter_end") else tmpQuery.rangeiter_end
@@ -356,9 +360,9 @@ class LeveldbServer(asyncio.Protocol):
             self.lg.debug("\tStart,end keys are '{}' / '{}'".format(startKey, endKey))
 
             if endKey != None:
-                theGen = LeveldbServer.db.RangeIter(startKey.encode("utf-8"), endKey.encode("utf-8"))
+                theGen = LeveldbServer.db.RangeIter(startKey, endKey)
             else:
-                theGen = LeveldbServer.db.RangeIter(startKey.encode("utf-8"))
+                theGen = LeveldbServer.db.RangeIter(startKey)
 
             toReturnList = list()
             self.lg.debug("starting RangeIter generator loop")
@@ -369,17 +373,17 @@ class LeveldbServer(asyncio.Protocol):
                 # here, if we are only given a start key, break out of the loop when 
                 # the keys no longer startwith() the start key (or prefix)
                 # if we have an end key we don't worry about it because it will end on its own.
-                if endKey == None and not iterEntry[0].decode("utf-8").startswith(startKey):
+                if endKey == None and not iterEntry[0].startswith(startKey):
                     self.lg.debug("\t\tbreaking RangeIter generator loop because endKey is None and the key '{}' does not start with '{}'"
                         .format(iterEntry[0], startKey))
                     break
                 
-                self.lg.debug("\tGot key/value: '{}' / '{}'".format(iterEntry[0].decode("utf-8"), iterEntry[1].decode("utf-8")))
+                self.lg.debug("\tGot key/value: '{}' / '{}'".format(iterEntry[0], iterEntry[1]))
 
                 # mutliple_returned_values is a repeated KeyValue field, which is basically just a dictionary.
                 tmpKeyVal = returnProtoObj.response.multiple_returned_values.add() # creates a new KeyValue message for us to modify
-                tmpKeyVal.key = iterEntry[0].decode("utf-8")
-                tmpKeyVal.value = iterEntry[1].decode("utf-8")
+                tmpKeyVal.key = bytes(iterEntry[0]) # the protobuf-py3 library freaks out and wants bytes instead of bytearray
+                tmpKeyVal.value = bytes(iterEntry[1]) # the protobuf-py3 library freaks out and wants bytes instead of bytearray
 
             returnProtoObj.response.type = LeveldbServerMessages.ServerResponse.RANGEITER_ATONCE_RETURNED
 
