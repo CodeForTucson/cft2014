@@ -65,7 +65,11 @@ upload_config:
         leveldb_server_messages.proto:
             filepath: "protoc/leveldb_server_messages.proto"
             include_path: "protoc"
-            output_path: "sunspot_server/"            
+            output_path: "sunspot_server/" 
+        gtfs-realtime.proto:
+            filepath: "protoc/gtfs-realtime.proto"
+            include_path: "protoc"
+            output_path: "sunspot_server/"
 
 
     # the files we upload and where they get uploaded to
@@ -91,6 +95,11 @@ upload_config:
 
         leveldb_server_messages_pb2.py:
             filepath: "sunspot_server/leveldb_server_messages_pb2.py"
+            upload_to: "/var/www/sunspot"
+            chown_to: ""
+
+        gtfs_realtime_pb2.py:
+            filepath: "sunspot_server/gtfs_realtime_pb2.py"
             upload_to: "/var/www/sunspot"
             chown_to: ""
 
