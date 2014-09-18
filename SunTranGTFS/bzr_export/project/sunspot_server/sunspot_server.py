@@ -37,6 +37,7 @@ from contextlib import closing
 import yaml
 import lzma
 import pathlib
+import json
 
 ###################
 # project imports 
@@ -54,6 +55,7 @@ from server_database import CherrypyServerDatabase, ServerDatabaseEnums
 ###################
 
 from sunspot_messages_pb2 import SunspotMessages
+from gtfs_realtime_pb2 import FeedMessage
 import google.protobuf.message # for DecodeError exception
 
 
@@ -348,7 +350,56 @@ class TestZip():
 
         self.logger.error("Testzip: num is {}, serving {}".format(num, tmpZipFilePath))
         return serve_file(str(tmpZipFilePath), "application/zip", str(tmpZipFilePath))
-        
+
+
+class TmpFindBus():
+    ''' simple cherrypy application that just returns json of a bus's coordinates that they specify
+    '''
+
+    # let cherrypy know that we are exposing this class to the web to be called
+    exposed = True
+
+
+    def __init__(self):
+        ''' constructor'''
+        self.logger = None
+
+
+    def GET(self, busNum, milliSinceEpoch):
+
+        cherrypy.response.headers['Content-Type'] = "application/json"
+
+        actualDate = arrow.get(int(milliSinceEpoch) / 1000)
+
+        self.logger.error("[{}]: bus number is {}".format(actualDate.isoformat(), busNum))
+
+
+        resp = requests.get("http://suntran.com/TMGTFSRealTimeWebService/Vehicle/VehiclePositions.pb")
+
+
+        try:
+            protoObj = FeedMessage.FromString(resp.content)
+        except google.protobuf.message.DecodeError as e:  
+            raise cherrypy.HTTPError(401)
+
+        for iterEnt in protoObj.entity:
+            if iterEnt.HasField("vehicle"):
+                if iterEnt.vehicle.vehicle.label == busNum:
+                    ts = arrow.now().isoformat()
+                    returnStr = json.dumps({
+                        "vehicle": busNum, 
+                        "lat": iterEnt.vehicle.position.latitude, 
+                        "lon": iterEnt.vehicle.position.longitude,
+                        "timestamp": ts})
+                    self.logger.error("\tFound bus, returning lat: {}, lon: {}, time: {}".format(
+                        iterEnt.vehicle.position.latitude, iterEnt.vehicle.position.longitude, ts ))
+                    return returnStr.encode("utf-8")
+
+        # if we get here we haven't found the bus
+        self.logger.error("\tcouldn't find bus with number {}".format(busNum))
+        raise cherrypy.HTTPError(401)
+
+        # return "{'hello': 'bob'}".encode("utf-8")
 
 # config object we pass to cherrypy.Application()
 config = {
@@ -363,12 +414,21 @@ config = {
         'request.dispatch': cherrypy.dispatch.MethodDispatcher(),
         "log.error_file": "/var/www/sunspot_error.log",
         "constants_yaml": "/var/www/sunspot/constants_config.yaml"
-    }}
+    },
+    "tmpFindBus": {
+
+        'request.dispatch': cherrypy.dispatch.MethodDispatcher(),
+        "log.error_file": "/var/www/tmpfindbus_error.log",
+
+    }
+}
 
 
 # server setup
 root = Root()
 root.testzip = TestZip()
+root.tmpFindBus = TmpFindBus()
 application = cherrypy.Application(root, script_name="/sunspot", config=config)
 root.testzip.logger = application.log
+root.tmpFindBus.logger = application.log
 root._setApp(application)
