@@ -90,6 +90,37 @@ class TestLeveldbServer(unittest.TestCase):
             with self.assertRaises(KeyError):
                 sdb[randomKey]
 
+    def testDeleteAllInRange(self):
+
+        sdb = TestLeveldbServer.serverDb
+
+        prefix = "HELLOTHISISAPREFIX_"
+
+        thelist = []
+
+        for idx in range(5):
+
+            randomKey = prefix + "".join(random.sample(alphabet, 5))
+            randomValue = "".join(random.sample(alphabet, 10))
+
+            # add the key with the prefix
+            sdb[randomKey] = randomValue
+            thelist.append(randomKey)
+
+            # ensure that it is there
+            self.assertEqual(sdb[randomKey], randomValue)
+
+        self._log("deleting all in range {}".format(prefix), logging.INFO)
+        # then delete all in range (with the prefix)
+        sdb.deleteAllInRange("{}", [prefix])
+
+        for entry in thelist:
+            # ensure that we get key errors for all of these keys we added
+
+            with self.assertRaises(KeyError):
+                self._log("\ttesting {}".format(entry), logging.INFO)
+                sdb[entry]
+
 
 
 # run the unit tests

@@ -346,13 +346,42 @@ class ServerDatabase:
         @param formatEntries - an iterable we use when we call .format() on @rangeStr
         '''
 
-        toDelList = list()
-        for iterResult in self.getGeneratorWithPrefix(rangeStr, formatEntries):
-            toDelList.append(iterResult[0])
+        # toDelList = list()
+        # for iterResult in self.getGeneratorWithPrefix(rangeStr, formatEntries):
+        #     toDelList.append(iterResult[0])
 
-        for iterEntry in toDelList:
-            self.lg.debug("Deleting key {}".format(iterEntry))
-            self.db.Delete(iterEntry)
+        # for iterEntry in toDelList:
+        #     self.lg.debug("Deleting key {}".format(iterEntry))
+        #     self.Delete(iterEntry)
+
+        protoObj = self._createProtoQuery()
+        query = protoObj.query
+
+        # set the key, encoded into bytes
+        tmp = rangeStr.format(*formatEntries)
+        query.rangeiter_start = tmp.encode("utf-8")
+
+        # set the operation we want the server to do
+        query.type = LeveldbServerMessages.ServerQuery.DELETE_ALL_IN_RANGE
+
+        # send it
+        self._socketSend(self._isProtoComplete(protoObj))
+        self._log("Sending proto message: {}".format(str(protoObj)))
+
+        # wait for response and return it, we get back bytes of a protobuf object
+        resultBytes = self._socketRecvWithSizePrefix()
+        self._log("got back bytes: {}".format(resultBytes))
+
+         # figure out if the server sent us a KeyError or a real value
+        protoResult = LeveldbServerMessages.ActualData.FromString(resultBytes)
+        self._log("recieved protoMessage: {}".format(str(protoResult)))
+        resp = protoResult.response
+
+        if resp.type == LeveldbServerMessages.ServerResponse.DELETE_SUCCESSFUL:
+            self._log("Delete all in range successful!")
+
+        else:
+            raise Exception("Got an unsuccessful server message for delete all in range! {}".format(resp.type))
 
 class CherrypyServerDatabase (ServerDatabase):
     ''' subclass of ServerDatabase, the only reason we do this
