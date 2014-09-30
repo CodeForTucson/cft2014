@@ -26,7 +26,7 @@ class ServerDatabase:
 
 
 
-    def __init__(self, ipAddr, port, logger):
+    def __init__(self, ipAddr, port, logger=None):
         '''constructor
         @param ipAddr - the ip address as a string of the leveldb_server that we want to connect to
         @param port - the port as a string of the leveldb_server that we want to connect to
@@ -34,6 +34,7 @@ class ServerDatabase:
 
         # self.db = leveldb.LevelDB(databasePath)
         # self.dbFilePath = databasePath
+
 
         self.lg = logger
 
@@ -86,16 +87,16 @@ class ServerDatabase:
         chunks = []
         bytes_recd = 0
         while bytes_recd < msgLen:
-            print("\treading, msgLen is {}".format(msgLen))
+            #print("\treading, msgLen is {}".format(msgLen))
             chunk = self.socket.recv(min(msgLen - bytes_recd, 2048))
             if chunk == b'':
                 self._log("Got 0 bytes on socket.recv(), connection is broken!", severity="ERROR")
                 raise RuntimeError("socket connection broken")
-            print("\t\tgot chunk: {}".format(chunk))
+            #print("\t\tgot chunk: {}".format(chunk))
             chunks.append(chunk)
             bytes_recd = bytes_recd + len(chunk)
 
-        print("\tdone reading")
+        #print("\tdone reading")
         return b''.join(chunks)
 
     def _log(self, msg, severity=logging.DEBUG):
@@ -104,7 +105,8 @@ class ServerDatabase:
         @param severity - what severity to log this message under, defaults to DEBUG
         '''
 
-        self.lg.log(severity, msg)
+        if self.lg:
+            self.lg.log(severity, msg)
 
     def _createProtoQuery(self):
         ''' helper method that creates the LeveldbServerMessages.ActualData object for us, sets the timestamp
@@ -178,6 +180,7 @@ class ServerDatabase:
             return resp.returned_value.decode("utf-8")
         else:
             self._log("Didn't get an expected ServerResponse type! got: {}".format())
+            raise Exception("Unexpected ServerResponse")
 
 
 
@@ -191,7 +194,37 @@ class ServerDatabase:
 
         self._log("Setting key: '{}' , value: '{}'".format(key, value))
 
-        self.db.Put(key.encode("utf-8"), value.encode("utf-8"))
+        #self.db.Put(key.encode("utf-8"), value.encode("utf-8"))
+
+        protoObj = self._createProtoQuery()
+        query = protoObj.query
+
+        # set the key, encoded into bytes
+        query.key = key.encode("utf-8")
+        query.value = value.encode("utf-8")
+
+        # set the operation we want the server to do
+        query.type = LeveldbServerMessages.ServerQuery.SET
+
+         # send it
+        self._socketSend(self._isProtoComplete(protoObj))
+        self._log("Sending proto message: {}".format(str(protoObj)))
+
+        # wait for response and return it, we get back bytes of a protobuf object
+        resultBytes = self._socketRecvWithSizePrefix()
+        self._log("got back bytes: {}".format(resultBytes))
+
+         # figure out if the server sent us a KeyError or a real value
+        protoResult = LeveldbServerMessages.ActualData.FromString(resultBytes)
+        self._log("recieved protoMessage: {}".format(str(protoResult)))
+        resp = protoResult.response
+
+        if resp.type == LeveldbServerMessages.ServerResponse.SET_SUCCESSFUL:
+
+            self._log("set was successful!")
+
+        else:
+            raise Exception("Got a unsuccessful server message for set! {}".format(resp.type))
 
 
 
@@ -202,7 +235,38 @@ class ServerDatabase:
         '''
 
         self._log("Deleting key: '{}'".format(key))
-        self.db.Delete(key.encode("utf-8"))
+        #self.db.Delete(key.encode("utf-8"))
+
+
+        protoObj = self._createProtoQuery()
+        query = protoObj.query
+
+        # set the key, encoded into bytes
+        query.key = key.encode("utf-8")
+
+        # set the operation we want the server to do
+        query.type = LeveldbServerMessages.ServerQuery.DELETE
+
+        # send it
+        self._socketSend(self._isProtoComplete(protoObj))
+        self._log("Sending proto message: {}".format(str(protoObj)))
+
+        # wait for response and return it, we get back bytes of a protobuf object
+        resultBytes = self._socketRecvWithSizePrefix()
+        self._log("got back bytes: {}".format(resultBytes))
+
+         # figure out if the server sent us a KeyError or a real value
+        protoResult = LeveldbServerMessages.ActualData.FromString(resultBytes)
+        self._log("recieved protoMessage: {}".format(str(protoResult)))
+        resp = protoResult.response
+
+        if resp.type == LeveldbServerMessages.ServerResponse.DELETE_SUCCESSFUL:
+            self._log("Delete was successful!")
+
+        else:
+            raise Exception("Got an unsuccessful server message for delete! {}".format(resp.type))
+
+
 
     def __del__(self):
         ''' destructor'''
