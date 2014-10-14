@@ -1,4 +1,4 @@
-#
+#!/usr/bin/env python3
 #
 # Script to automate uploading files to my server
 #
