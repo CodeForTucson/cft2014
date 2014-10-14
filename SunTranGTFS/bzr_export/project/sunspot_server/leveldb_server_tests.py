@@ -122,6 +122,48 @@ class TestLeveldbServer(unittest.TestCase):
                 sdb[entry]
 
 
+    def testReturnAtOnceIter(self):
+
+        sdb = TestLeveldbServer.serverDb
+
+        prefix = "HELLO_"
+
+        theDict = dict()
+
+        # insert 5 entries that have the prefix
+        for idx in range(5):
+            randomKey = prefix + "".join(random.sample(alphabet, 5))
+            randomValue = "".join(random.sample(alphabet, 10))
+
+            # add the key with the prefix
+            sdb[randomKey] = randomValue
+            theDict[randomKey] = randomValue
+
+            # ensure that it is there
+            self.assertEqual(sdb[randomKey], randomValue)
+
+        # insert 5 more random values
+        for idx in range(5):
+            randomKey =  "".join(random.sample(alphabet, 5))
+            randomValue = "".join(random.sample(alphabet, 10))
+
+            # add the key with the prefix
+            sdb[randomKey] = randomValue
+            theDict[randomKey] = randomValue
+
+
+            # ensure that it is there
+            self.assertEqual(sdb[randomKey], randomValue)
+
+        # do a atOnceIter
+        for key,value in sdb.getGeneratorWithPrefix("{}", [prefix]):
+            #print("asserting {} and {}".format(theDict[key], value))
+            self.assertEqual(theDict[key], value)
+
+
+
+
+
 
 # run the unit tests
 if __name__ == '__main__':

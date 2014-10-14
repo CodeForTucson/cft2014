@@ -24,10 +24,9 @@ message LeveldbServerMessages {
         }
 
         required ServerQueryType type = 1;
-        optional bytes key = 2;
+        optional bytes key = 2; // also rangeiter_start
         optional bytes value = 3;
-        optional bytes rangeiter_start = 4;
-        optional bytes rangeiter_end = 5;
+        optional bytes rangeiter_end = 4;
 
     }
 

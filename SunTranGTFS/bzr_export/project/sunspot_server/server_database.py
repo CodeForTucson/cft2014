@@ -327,11 +327,43 @@ class ServerDatabase:
 
         thekey = key.format(*formatEntries)
 
-        for iterResult in self.db.RangeIter(thekey.encode("utf-8")):
-            if iterResult[0].decode("utf-8").startswith(thekey):
-                yield iterResult
-            else:
-                break
+        self._log("get generator with prefix: key: {}, formatEntries: {}".format(key, formatEntries))
+
+
+        protoObj = self._createProtoQuery()
+        query = protoObj.query
+
+        # set the key, encoded into bytes
+        query.key = thekey.encode("utf-8")
+
+        # set the operation we want the server to do
+        query.type = LeveldbServerMessages.ServerQuery.RETURN_ATONCE_RANGE_ITER
+
+        # send it
+        self._socketSend(self._isProtoComplete(protoObj))
+        self._log("Sending proto message: {}".format(str(protoObj)))
+
+        # wait for response and return it, we get back bytes of a protobuf object
+        resultBytes = self._socketRecvWithSizePrefix()
+        self._log("got back bytes: {}".format(resultBytes))
+
+         # figure out if the server sent us a KeyError or a real value
+        protoResult = LeveldbServerMessages.ActualData.FromString(resultBytes)
+        self._log("recieved protoMessage: {}".format(str(protoResult)))
+        resp = protoResult.response
+        if resp.type == LeveldbServerMessages.ServerResponse.RANGEITER_ATONCE_RETURNED:
+
+            self._log("return range atonce successful")
+
+            for keyValueObj in resp.multiple_returned_values:
+
+                yield keyValueObj.key.decode("utf-8"), keyValueObj.value.decode("utf-8")
+
+        # for iterResult in self.db.RangeIter(thekey.encode("utf-8")):
+        #     if iterResult[0].decode("utf-8").startswith(thekey):
+        #         yield iterResult
+        #     else:
+        #         break
 
 
     def deleteAllInRange(self, rangeStr, formatEntries):
